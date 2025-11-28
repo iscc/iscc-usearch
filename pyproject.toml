@@ -1,0 +1,49 @@
+[project]
+name = "iscc-usearch"
+version = "0.1.0"
+description = "A thin wrapper around USearch to support variable length bit-vectors and larger than RAM indexes."
+readme = "README.md"
+authors = [
+    { name = "Titusz Pan", email = "titusz.pan@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "usearch>=2.21.0",
+    "numba>=0.62.1",
+    "loguru>=0.7.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.13,<0.10.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "poethepoet>=0.38.0",
+    "bandit>=1.9.2",
+    "prek>=0.2.19",
+    "pyright>=1.1.407",
+    "pytest>=9.0.1",
+    "pytest-cov>=7.0.0",
+    "ruff>=0.14.6",
+]
+
+[tool.ruff]
+line-length = 119
+
+[tool.ruff.format]
+line-ending = "lf"
+
+[tool.bandit]
+skips = ["B101"]  # Allow assert statements for parameter validation
+
+[tool.pyright]
+typeCheckingMode = "basic"
+include = ["src/iscc_usearch"]
+reportAttributeAccessIssue = "warning"
+reportArgumentType = "warning"
+reportInvalidTypeForm = false        # Numba @cfunc signatures use special type syntax
+reportInvalidTypeArguments = false   # Numba CPointer[type] syntax
+reportOperatorIssue = false          # Numba cfunc body operations
+reportAssignmentType = "warning"
+reportReturnType = "warning"
