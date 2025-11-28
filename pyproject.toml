@@ -37,6 +37,22 @@ line-ending = "lf"
 [tool.bandit]
 skips = ["B101"]  # Allow assert statements for parameter validation
 
+[tool.pytest.ini_options]
+addopts = "--cov=iscc_usearch --cov-report=term-missing --cov-fail-under=100"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["src/iscc_usearch"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+]
+
 [tool.pyright]
 typeCheckingMode = "basic"
 include = ["src/iscc_usearch"]
