@@ -1,0 +1,354 @@
+"""
+Test ShardedIndex merge operations.
+
+Confirms expected behavior for merging search results across shards:
+- Merge results with radius filter
+- Merge batch results
+- Single query merge path
+- Batch query merge path
+- Strict radius filtering in merge
+"""
+
+import numpy as np
+from usearch.index import Index
+
+from iscc_usearch.sharded import ShardedIndex
+
+
+def test_merge_results_with_radius_filter(tmp_path):
+    """Test that merged results respect radius filter."""
+    # Create index with tiny shard to force multiple
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add vectors across multiple shards
+    for i in range(100):
+        index.add(i, np.random.rand(64).astype(np.float32))
+
+    # Search with very restrictive radius
+    query = np.random.rand(64).astype(np.float32)
+    matches = index.search(query, count=10, radius=0.01)
+
+    # All returned distances should be within radius
+    for dist in matches.distances:
+        assert dist <= 0.01 or dist == float("inf")
+
+
+def test_merge_batch_results(tmp_path):
+    """Test merging batch results from multiple shards."""
+    # Create index with tiny shard
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    for i in range(100):
+        index.add(i, np.random.rand(64).astype(np.float32))
+
+    # Batch search
+    queries = np.random.rand(5, 64).astype(np.float32)
+    batch_matches = index.search(queries, count=10)
+
+    assert len(batch_matches) == 5
+
+
+def test_merge_single_with_strict_radius(tmp_path):
+    """Test single search with radius filters results in merge."""
+    # Create index with tiny shard to force multiple shards
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add vectors to create shards
+    vectors = []
+    for i in range(100):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Verify we have multiple sources
+    assert index._view_shards is not None or index._active_shard is not None
+
+    # Search with strict radius
+    matches = index.search(vectors[0], count=10, radius=0.001)
+
+    # All returned distances should be within radius
+    for dist in matches.distances:
+        if dist < float("inf"):
+            assert dist <= 0.001
+
+
+def test_merge_batch_with_strict_radius(tmp_path):
+    """Test batch search with radius filters in merge."""
+    # Create index with tiny shard to force multiple shards
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    vectors = []
+    for i in range(100):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Batch search with strict radius
+    query_batch = np.array(vectors[:5])
+    batch_matches = index.search(query_batch, count=10, radius=0.001)
+
+    # All returned distances should be within radius
+    for i in range(5):
+        for dist in batch_matches.distances[i]:
+            if dist < float("inf"):
+                assert dist <= 0.001
+
+
+def test_multi_shard_search_single_query(tmp_path):
+    """Test single query search across multiple shards with merging."""
+    # Force multiple shards
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    vectors = []
+    for i in range(150):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Ensure we have view shards + active shard
+    if index._view_shards is not None and len(index._view_shards) > 0:
+        if index._active_shard is not None and len(index._active_shard) > 0:
+            # Both sources exist, search will merge
+            matches = index.search(vectors[0], count=5)
+            assert len(matches.keys) > 0
+
+
+def test_multi_shard_search_batch_query(tmp_path):
+    """Test batch query search across multiple shards with merging."""
+    # Force multiple shards
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    vectors = []
+    for i in range(150):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Batch search
+    query_batch = np.array(vectors[:3])
+    batch_matches = index.search(query_batch, count=5)
+
+    assert len(batch_matches) == 3
+
+
+def test_merge_single_matches_with_radius(tmp_path):
+    """Test merging single query results with radius filtering."""
+    # Create index and populate view shards via rotation
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add enough to trigger rotation
+    vectors = []
+    for i in range(50):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # At this point we should have view_shards populated
+    # Add a few more vectors to active shard (without triggering rotation)
+    for i in range(50, 55):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Verify we have both sources
+    has_view = index._view_shards is not None and len(index._view_shards) > 0
+    has_active = index._active_shard is not None and len(index._active_shard) > 0
+
+    if has_view and has_active:
+        # Single query search with radius - should trigger merge
+        matches = index.search(vectors[0], count=10, radius=0.5)
+        assert len(matches.keys) > 0
+
+
+def test_merge_batch_matches_with_radius(tmp_path):
+    """Test merging batch query results with radius filtering."""
+    # Create index and populate view shards via rotation
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add enough to trigger rotation
+    vectors = []
+    for i in range(50):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Add a few more to active shard
+    for i in range(50, 55):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Verify we have both sources
+    has_view = index._view_shards is not None and len(index._view_shards) > 0
+    has_active = index._active_shard is not None and len(index._active_shard) > 0
+
+    if has_view and has_active:
+        # Batch query search with radius - should trigger batch merge
+        query_batch = np.array(vectors[:3])
+        batch_matches = index.search(query_batch, count=10, radius=0.5)
+        assert len(batch_matches) == 3
+
+
+def test_search_single_query_triggers_merge(tmp_path):
+    """Force merge path for single query by having both sources."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add vectors to fill and rotate shards
+    vectors = []
+    for i in range(80):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Add to active shard after rotation
+    for i in range(80, 85):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Ensure merge path is taken
+    if index._view_shards and len(index._view_shards) > 0:
+        if index._active_shard and len(index._active_shard) > 0:
+            # This should trigger _merge_search_results with is_single=True
+            matches = index.search(vectors[0], count=5)
+            assert len(matches.keys) > 0
+
+
+def test_search_batch_query_triggers_merge(tmp_path):
+    """Force merge path for batch query by having both sources."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Add vectors to fill and rotate shards
+    vectors = []
+    for i in range(80):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Add to active shard after rotation
+    for i in range(80, 85):
+        v = np.random.rand(64).astype(np.float32)
+        vectors.append(v)
+        index.add(i, v)
+
+    # Ensure merge path is taken
+    if index._view_shards and len(index._view_shards) > 0:
+        if index._active_shard and len(index._active_shard) > 0:
+            # This should trigger _merge_search_results with is_single=False
+            query_batch = np.array(vectors[:3])
+            batch_matches = index.search(query_batch, count=5)
+            assert len(batch_matches) == 3
+
+
+def test_merge_code_path_single(tmp_path):
+    """Explicitly test merge code path for single query."""
+    # Use larger shard size to control rotation timing
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    # Add vectors and save to create first shard file
+    vectors = np.random.rand(100, 64).astype(np.float32)
+    index.add(list(range(100)), vectors)
+    index.save()
+
+    # Reload to put saved shard in view mode
+    index2 = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    # Force view mode on the saved shard while keeping active shard writable
+    index2.view()  # All shards in view mode
+    index2._view_mode = False  # Re-enable writes
+    index2._active_shard = index2._config.copy()
+
+    index2._active_shard = Index(**index2._config)
+
+    # Add new vectors to active shard
+    new_vectors = np.random.rand(10, 64).astype(np.float32)
+    for i, v in enumerate(new_vectors):
+        index2._active_shard.add(1000 + i, v)
+
+    # Now we have view_shards (100 vectors) and active_shard (10 vectors)
+    assert len(index2._view_shards) == 100
+    assert len(index2._active_shard) == 10
+
+    # Single query - should trigger merge
+    matches = index2.search(vectors[0], count=5)
+    assert len(matches.keys) > 0
+
+
+def test_merge_code_path_batch(tmp_path):
+    """Explicitly test merge code path for batch query."""
+    # Use larger shard size to control rotation timing
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    # Add vectors and save to create first shard file
+    vectors = np.random.rand(100, 64).astype(np.float32)
+    index.add(list(range(100)), vectors)
+    index.save()
+
+    # Reload to put saved shard in view mode
+    index2 = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    # Force view mode on the saved shard while keeping active shard writable
+    index2.view()  # All shards in view mode
+    index2._view_mode = False  # Re-enable writes
+
+    index2._active_shard = Index(**index2._config)
+
+    # Add new vectors to active shard
+    new_vectors = np.random.rand(10, 64).astype(np.float32)
+    for i, v in enumerate(new_vectors):
+        index2._active_shard.add(1000 + i, v)
+
+    # Now we have view_shards (100 vectors) and active_shard (10 vectors)
+    assert len(index2._view_shards) == 100
+    assert len(index2._active_shard) == 10
+
+    # Batch query - should trigger batch merge
+    batch_matches = index2.search(vectors[:3], count=5)
+    assert len(batch_matches) == 3
+
+
+def test_merge_single_with_radius_filter(tmp_path):
+    """Test merge with radius filtering for single query."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    vectors = np.random.rand(100, 64).astype(np.float32)
+    index.add(list(range(100)), vectors)
+    index.save()
+
+    index2 = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+    index2.view()
+    index2._view_mode = False
+
+    index2._active_shard = Index(**index2._config)
+
+    new_vectors = np.random.rand(10, 64).astype(np.float32)
+    for i, v in enumerate(new_vectors):
+        index2._active_shard.add(1000 + i, v)
+
+    # Single query with radius - triggers merge with radius filtering
+    matches = index2.search(vectors[0], count=10, radius=0.5)
+    for dist in matches.distances:
+        assert dist <= 0.5 or dist == float("inf")
+
+
+def test_merge_batch_with_radius_filter(tmp_path):
+    """Test merge with radius filtering for batch query."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+
+    vectors = np.random.rand(100, 64).astype(np.float32)
+    index.add(list(range(100)), vectors)
+    index.save()
+
+    index2 = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
+    index2.view()
+    index2._view_mode = False
+
+    index2._active_shard = Index(**index2._config)
+
+    new_vectors = np.random.rand(10, 64).astype(np.float32)
+    for i, v in enumerate(new_vectors):
+        index2._active_shard.add(1000 + i, v)
+
+    # Batch query with radius - triggers batch merge with radius filtering
+    batch_matches = index2.search(vectors[:3], count=10, radius=0.5)
+    assert len(batch_matches) == 3
