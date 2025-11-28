@@ -9,6 +9,11 @@ wheels/
 # Virtual environments
 .venv
 
+# Test and other artifacts
+.pytest_cache/
+.ruff_cache/
+.coverage
+
 # JetBrains IDE
 .idea
 
