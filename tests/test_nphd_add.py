@@ -1,15 +1,13 @@
-"""Test NphdIndex.add() with variable-length binary vectors."""
+"""Test NphdIndex/ShardedNphdIndex.add() with variable-length binary vectors."""
 
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
 
-from iscc_usearch.nphd import NphdIndex
 
-
-def test_add_single_vector_returns_key():
+def test_add_single_vector_returns_key(nphd_index_factory):
     """Adding a single variable-length vector returns the key."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     vector = np.array([178, 204, 60, 240], dtype=np.uint8)
     result = idx.add(1, vector)
@@ -23,9 +21,9 @@ def test_add_single_vector_returns_key():
     assert len(idx) == 1
 
 
-def test_add_single_vector_auto_key():
+def test_add_single_vector_auto_key(nphd_index_factory):
     """Adding with key=None auto-generates key starting from 0."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     vector = np.array([178, 204, 60, 240], dtype=np.uint8)
     result = idx.add(None, vector)
@@ -36,9 +34,9 @@ def test_add_single_vector_auto_key():
     assert len(idx) == 1
 
 
-def test_add_batch_uniform_vectors():
+def test_add_batch_uniform_vectors(nphd_index_factory):
     """Adding 2D array of uniform-length vectors."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     keys = [1, 2, 3]
     vectors = np.array(
@@ -58,9 +56,9 @@ def test_add_batch_uniform_vectors():
     assert len(idx) == 3
 
 
-def test_add_batch_variable_vectors():
+def test_add_batch_variable_vectors(nphd_index_factory):
     """Adding list of variable-length vectors."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     keys = [1, 2, 3]
     vectors = [
@@ -77,9 +75,9 @@ def test_add_batch_variable_vectors():
     assert len(idx) == 3
 
 
-def test_add_batch_auto_keys():
+def test_add_batch_auto_keys(nphd_index_factory):
     """Batch add with key=None generates sequential keys."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     vectors = [
         np.array([178, 204], dtype=np.uint8),
@@ -95,9 +93,9 @@ def test_add_batch_auto_keys():
     assert len(idx) == 3
 
 
-def test_add_duplicate_key_raises_error():
+def test_add_duplicate_key_raises_error(nphd_index_factory):
     """Adding to same key twice raises RuntimeError."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     vector1 = np.array([178, 204, 60, 240], dtype=np.uint8)
     vector2 = np.array([100, 150, 200, 250], dtype=np.uint8)
@@ -108,9 +106,9 @@ def test_add_duplicate_key_raises_error():
         idx.add(1, vector2)
 
 
-def test_add_multiple_keys_returns_respective_keys():
+def test_add_multiple_keys_returns_respective_keys(nphd_index_factory):
     """Adding vectors to different keys returns their keys."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     result1 = idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
     result2 = idx.add(2, np.array([100, 150, 200], dtype=np.uint8))
@@ -126,9 +124,9 @@ def test_add_multiple_keys_returns_respective_keys():
     assert len(idx) == 3
 
 
-def test_add_mixed_auto_and_explicit_keys():
+def test_add_mixed_auto_and_explicit_keys(nphd_index_factory):
     """Mixing auto-generated and explicit keys."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     # Auto-key should be 0
     result1 = idx.add(None, np.array([1, 1, 1, 1], dtype=np.uint8))
@@ -145,9 +143,9 @@ def test_add_mixed_auto_and_explicit_keys():
     assert_array_equal(result2, expected2)
 
 
-def test_add_batch_uniform_vectors_with_auto_keys():
+def test_add_batch_uniform_vectors_with_auto_keys(nphd_index_factory):
     """Batch add of uniform 2D array with auto-generated keys."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     vectors = np.array(
         [
@@ -166,9 +164,9 @@ def test_add_batch_uniform_vectors_with_auto_keys():
     assert len(idx) == 3
 
 
-def test_add_single_byte_vectors():
+def test_add_single_byte_vectors(nphd_index_factory):
     """Adding single-byte vectors."""
-    idx = NphdIndex(max_dim=64)
+    idx = nphd_index_factory(max_dim=64)
 
     keys = [1, 2, 3]
     vectors = [
@@ -185,9 +183,9 @@ def test_add_single_byte_vectors():
     assert len(idx) == 3
 
 
-def test_add_max_length_vectors():
+def test_add_max_length_vectors(nphd_index_factory):
     """Adding vectors at maximum allowed length."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     # Maximum is 32 bytes (256 bits / 8)
     vector = np.array([i for i in range(32)], dtype=np.uint8)
@@ -199,9 +197,9 @@ def test_add_max_length_vectors():
     assert len(idx) == 1
 
 
-def test_add_empty_then_add_more():
+def test_add_empty_then_add_more(nphd_index_factory):
     """Adding to an initially empty index then adding more vectors."""
-    idx = NphdIndex(max_dim=128)
+    idx = nphd_index_factory(max_dim=128)
 
     # Start with empty index
     assert len(idx) == 0
@@ -216,9 +214,9 @@ def test_add_empty_then_add_more():
     assert len(idx) == 3
 
 
-def test_add_returns_numpy_array():
+def test_add_returns_numpy_array(nphd_index_factory):
     """Verify add() always returns np.ndarray, not list or int."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     # Single key
     result1 = idx.add(1, np.array([1, 2, 3], dtype=np.uint8))

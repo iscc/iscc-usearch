@@ -1,5 +1,5 @@
 """
-Test NphdIndex.get() method with variable-length vectors.
+Test NphdIndex/ShardedNphdIndex.get() method with variable-length vectors.
 
 Verifies that get() returns properly unpadded vectors with correct lengths.
 """
@@ -10,12 +10,12 @@ from numpy.testing import assert_array_equal
 from iscc_usearch.nphd import NphdIndex
 
 
-# Tests for NphdIndex.get() with multi=False (single vector per key)
+# Tests for get() with multi=False (single vector per key)
 
 
-def test_get_single_key_exists_returns_unpadded_1d():
+def test_get_single_key_exists_returns_unpadded_1d(nphd_index_factory):
     """Single key that exists returns 1D unpadded array."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
     vector = np.array([178, 204, 60, 240], dtype=np.uint8)
     idx.add(1, vector)
 
@@ -27,18 +27,18 @@ def test_get_single_key_exists_returns_unpadded_1d():
     assert_array_equal(result, vector)
 
 
-def test_get_single_key_missing_returns_none():
+def test_get_single_key_missing_returns_none(nphd_index_factory):
     """Single key that doesn't exist returns None."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     result = idx.get(999)
 
     assert result is None
 
 
-def test_get_multiple_keys_all_exist_returns_list_of_unpadded():
+def test_get_multiple_keys_all_exist_returns_list_of_unpadded(nphd_index_factory):
     """Multiple existing keys return list of 1D unpadded arrays."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
     v1 = np.array([178, 204, 60, 240], dtype=np.uint8)
     v2 = np.array([100, 150, 200], dtype=np.uint8)  # Different length
     v3 = np.array([1, 2, 3, 4, 5], dtype=np.uint8)  # Different length
@@ -60,9 +60,9 @@ def test_get_multiple_keys_all_exist_returns_list_of_unpadded():
     assert_array_equal(result[2], v3)
 
 
-def test_get_multiple_keys_mixed_returns_list_with_none():
+def test_get_multiple_keys_mixed_returns_list_with_none(nphd_index_factory):
     """Multiple keys with some missing return list with None values."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
     v1 = np.array([178, 204, 60, 240], dtype=np.uint8)
     v3 = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
 
@@ -80,9 +80,9 @@ def test_get_multiple_keys_mixed_returns_list_with_none():
     assert_array_equal(result[2], v3)
 
 
-def test_get_multiple_keys_all_missing_returns_list_of_none():
+def test_get_multiple_keys_all_missing_returns_list_of_none(nphd_index_factory):
     """Multiple non-existing keys return list of None values."""
-    idx = NphdIndex(max_dim=256)
+    idx = nphd_index_factory(max_dim=256)
 
     result = idx.get([10, 20, 30])
 
@@ -92,6 +92,7 @@ def test_get_multiple_keys_all_missing_returns_list_of_none():
 
 
 # Tests for NphdIndex.get() with multi=True (multiple vectors per key)
+# Note: multi=True tests are NphdIndex-specific and not parametrized
 
 
 def test_get_single_key_one_vector_multi_returns_list():
