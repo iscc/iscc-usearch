@@ -76,13 +76,25 @@ class ShardedNphdIndex(ShardedIndex):
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
         """Restore an Index shard from disk and restore NPHD metric.
 
-        Uses Index.restore (not NphdIndex.restore) and manually restores metric.
+        When view=True, disables key lookups to skip expensive hash map population
+        (~2x speedup). Safe because view shards only support search(), not get/contains.
         """
-        shard = Index.restore(str(path), view=view)
-        if shard is not None:  # pragma: no branch - shard files are always valid in practice
-            # Restore custom NPHD metric (usearch load/view replaces it with standard Hamming)
-            metric = create_nphd_metric()
-            shard._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
+        meta = Index.metadata(str(path))
+        if meta is None:  # pragma: no cover - shard files are always valid in practice
+            return None
+        shard = Index(
+            ndim=meta["dimensions"],
+            metric=create_nphd_metric(),
+            dtype=meta["kind_scalar"],
+            enable_key_lookups=not view,  # Disable for view shards (2x speedup)
+        )
+        if view:
+            shard.view(str(path))
+        else:
+            shard.load(str(path))
+        # Restore custom NPHD metric (usearch load/view replaces it with standard Hamming)
+        metric = create_nphd_metric()
+        shard._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
         return shard
 
     @property

@@ -315,7 +315,7 @@ class ShardedIndex:
             self._view_shards = None
             return
 
-        with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}"):
+        with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}", log_start=True):
             # All but the last shard go into view mode
             view_paths = shard_files[:-1]
             active_path = shard_files[-1]
@@ -368,7 +368,7 @@ class ShardedIndex:
             self._active_shard = None
             return
 
-        with timer(f"ShardedIndex view {len(shard_files)} shards from {self._path}"):
+        with timer(f"ShardedIndex view {len(shard_files)} shards from {self._path}", log_start=True):
             # All shards in view mode (read-only)
             # Using workaround for usearch bug #643: Indexes(paths=[...]) segfaults
             # Keep references to prevent GC (Indexes.merge stores references, not copies)
@@ -627,8 +627,25 @@ class ShardedIndex:
         return Index(**self._config)
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore a shard from disk. Override in subclasses for custom shard types."""
-        return Index.restore(str(path), view=view)
+        """Restore a shard from disk. Override in subclasses for custom shard types.
+
+        When view=True, disables key lookups to skip expensive hash map population
+        (~2x speedup). Safe because view shards only support search(), not get/contains.
+        """
+        meta = Index.metadata(str(path))
+        if meta is None:  # pragma: no cover - shard files are always valid in practice
+            return None
+        idx = Index(
+            ndim=meta["dimensions"],
+            metric=meta["kind_metric"],
+            dtype=meta["kind_scalar"],
+            enable_key_lookups=not view,  # Disable for view shards (2x speedup)
+        )
+        if view:
+            idx.view(str(path))
+        else:
+            idx.load(str(path))
+        return idx
 
     def _discover_shards(self) -> list[Path]:
         """Return sorted list of shard_*.usearch files."""
