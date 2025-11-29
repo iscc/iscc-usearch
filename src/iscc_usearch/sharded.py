@@ -80,6 +80,7 @@ class ShardedIndex:
         self._active_shard: Index | None = None
         self._active_shard_path: Path | None = None
         self._viewed_indexes: list[Index] = []
+        self._cached_shards: list[Path] | None = None
 
         # Create directory if needed
         self._path.mkdir(parents=True, exist_ok=True)
@@ -180,16 +181,14 @@ class ShardedIndex:
         vectors = np.asarray(vectors)
         is_single = vectors.ndim == 1
 
-        results: list[Matches | BatchMatches] = []
-        has_view_results = False
+        view_results: Matches | BatchMatches | None = None
+        active_results: Matches | BatchMatches | None = None
 
         # Search view shards (via Indexes - doesn't support radius parameter)
         if self._view_shards is not None and len(self._view_shards) > 0:
             view_results = self._view_shards.search(
                 vectors, count=count, threads=threads, exact=exact, progress=progress
             )
-            results.append(view_results)
-            has_view_results = True
 
         # Search active shard (supports radius parameter)
         if self._active_shard is not None and len(self._active_shard) > 0:
@@ -202,22 +201,22 @@ class ShardedIndex:
                 log=log,
                 progress=progress,
             )
-            results.append(active_results)
 
-        # Handle empty index
-        if not results:
+        # Fast paths - avoid list allocation for common cases
+        if view_results is None and active_results is None:
             return self._empty_results(vectors, count, is_single)
 
-        # Single source - apply radius filter only if result is from view shards
-        # (Indexes.search doesn't support radius, Index.search already applied it)
-        if len(results) == 1:
-            result = results[0]
-            if radius < float("inf") and has_view_results:
-                result = self._apply_radius_filter(result, radius, is_single)
-            return result
+        if view_results is None:
+            return active_results  # type: ignore[return-value]
 
-        # Merge results from multiple sources (applies radius filter)
-        return self._merge_search_results(results, count, radius, is_single)
+        if active_results is None:
+            # Apply radius filter (Indexes.search doesn't support radius)
+            if radius < float("inf"):
+                return self._apply_radius_filter(view_results, radius, is_single)
+            return view_results
+
+        # Merge results from both sources (applies radius filter)
+        return self._merge_search_results([view_results, active_results], count, radius, is_single)
 
     def get(
         self,
@@ -296,6 +295,8 @@ class ShardedIndex:
         with timer(f"ShardedIndex save {shard_path.name}"):
             self._active_shard.save(shard_path, progress=progress)
         self._active_shard_path = shard_path
+        # Invalidate cache since new shard file may have been created
+        self._invalidate_shard_cache()
 
     def load(
         self,
@@ -308,6 +309,7 @@ class ShardedIndex:
         :param progress: Progress callback
         """
         self._view_mode = False
+        self._invalidate_shard_cache()
         shard_files = self._discover_shards()
 
         if not shard_files:
@@ -361,6 +363,7 @@ class ShardedIndex:
         :param progress: Progress callback
         """
         self._view_mode = True
+        self._invalidate_shard_cache()
         shard_files = self._discover_shards()
 
         if not shard_files:
@@ -683,9 +686,15 @@ class ShardedIndex:
         return idx
 
     def _discover_shards(self) -> list[Path]:
-        """Return sorted list of shard_*.usearch files."""
-        shards = list(self._path.glob("shard_*.usearch"))
-        return sorted(shards, key=lambda p: int(p.stem.split("_")[1]))
+        """Return sorted list of shard_*.usearch files (cached)."""
+        if self._cached_shards is None:
+            shards = list(self._path.glob("shard_*.usearch"))
+            self._cached_shards = sorted(shards, key=lambda p: int(p.stem.split("_")[1]))
+        return self._cached_shards
+
+    def _invalidate_shard_cache(self) -> None:
+        """Invalidate cached shard list (call after rotation/load/view)."""
+        self._cached_shards = None
 
     def _get_next_shard_number(self) -> int:
         """Get the next available shard number."""
@@ -727,6 +736,8 @@ class ShardedIndex:
             self._active_shard.save(str(shard_path))
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
+        # Invalidate cache since new shard file was created
+        self._invalidate_shard_cache()
 
         # Load the saved shard in view mode and merge into Indexes
         # Workaround for usearch bug #643: Indexes(paths=[...]) segfaults
@@ -773,8 +784,13 @@ class ShardedIndex:
 
     def _merge_single_matches(self, matches_list: Sequence[Matches], count: int, radius: float) -> Matches:
         """Merge multiple Matches objects into one, sorted by distance."""
-        all_keys = np.concatenate([m.keys for m in matches_list])
-        all_distances = np.concatenate([m.distances for m in matches_list])
+        # Fast path for common two-source case (avoids generator overhead)
+        if len(matches_list) == 2:
+            all_keys = np.concatenate((matches_list[0].keys, matches_list[1].keys))
+            all_distances = np.concatenate((matches_list[0].distances, matches_list[1].distances))
+        else:
+            all_keys = np.concatenate([m.keys for m in matches_list])
+            all_distances = np.concatenate([m.distances for m in matches_list])
 
         # Sort by distance and take top count within radius
         sorted_indices = np.argsort(all_distances)
@@ -796,49 +812,41 @@ class ShardedIndex:
         count: int,
         radius: float,
     ) -> BatchMatches:
-        """Merge multiple BatchMatches objects into one."""
+        """Merge multiple BatchMatches objects into one (vectorized)."""
         num_queries = len(batch_list[0])
 
-        merged_keys = []
-        merged_distances = []
-        merged_counts = []
+        # Stack all results: (num_queries, total_count_across_batches)
+        all_keys = np.concatenate([b.keys for b in batch_list], axis=1)
+        all_distances = np.concatenate([b.distances for b in batch_list], axis=1)
 
-        for query_idx in range(num_queries):
-            # Gather results for this query from all shards
-            all_keys = []
-            all_distances = []
+        # Argsort each row independently
+        sorted_indices = np.argsort(all_distances, axis=1)
 
-            for batch in batch_list:
-                query_matches = batch[query_idx]
-                all_keys.extend(query_matches.keys)
-                all_distances.extend(query_matches.distances)
+        # Gather sorted values using advanced indexing
+        row_idx = np.arange(num_queries)[:, None]
+        sorted_keys = all_keys[row_idx, sorted_indices]
+        sorted_distances = all_distances[row_idx, sorted_indices]
 
-            # Sort and truncate within radius
-            all_keys = np.array(all_keys, dtype=np.uint64)
-            all_distances = np.array(all_distances, dtype=np.float32)
-            sorted_indices = np.argsort(all_distances)
-            if radius < float("inf"):
-                mask = all_distances[sorted_indices] <= radius
-                sorted_indices = sorted_indices[mask]
-            sorted_indices = sorted_indices[:count]
+        # Apply radius filter and compute counts
+        if radius < float("inf"):
+            valid_mask = sorted_distances <= radius
+            # Count valid entries per row, capped at count
+            counts = np.minimum(valid_mask.sum(axis=1), count)
+            # Invalidate entries beyond radius
+            sorted_keys = np.where(valid_mask, sorted_keys, 0)
+            sorted_distances = np.where(valid_mask, sorted_distances, np.inf)
+        else:
+            # Count non-inf entries per row, capped at count
+            counts = np.minimum((sorted_distances < np.inf).sum(axis=1), count)
 
-            merged_keys.append(all_keys[sorted_indices])
-            merged_distances.append(all_distances[sorted_indices])
-            merged_counts.append(len(sorted_indices))
-
-        # Pad to uniform shape
-        keys_array = np.zeros((num_queries, count), dtype=np.uint64)
-        distances_array = np.full((num_queries, count), np.inf, dtype=np.float32)
-
-        for i in range(num_queries):
-            n = len(merged_keys[i])
-            keys_array[i, :n] = merged_keys[i]
-            distances_array[i, :n] = merged_distances[i]
+        # Truncate to requested count
+        keys_array = sorted_keys[:, :count].copy()
+        distances_array = sorted_distances[:, :count].copy()
 
         return BatchMatches(
             keys=keys_array,
             distances=distances_array,
-            counts=np.array(merged_counts, dtype=np.int64),
+            counts=counts.astype(np.int64),
             visited_members=sum(b.visited_members for b in batch_list),
             computed_distances=sum(b.computed_distances for b in batch_list),
         )
@@ -849,7 +857,7 @@ class ShardedIndex:
         radius: float,
         is_single: bool,
     ) -> Matches | BatchMatches:
-        """Filter search results to only include matches within radius."""
+        """Filter search results to only include matches within radius (vectorized)."""
         if is_single:
             matches = cast(Matches, result)
             mask = matches.distances <= radius
@@ -861,25 +869,18 @@ class ShardedIndex:
             )
         else:
             batch = cast(BatchMatches, result)
-            num_queries = len(batch)
-            count = batch.keys.shape[1]
-            keys_array = np.zeros((num_queries, count), dtype=np.uint64)
-            distances_array = np.full((num_queries, count), np.inf, dtype=np.float32)
-            counts = []
+            # Vectorized radius mask across all queries
+            mask = batch.distances <= radius
+            counts = mask.sum(axis=1).astype(np.int64)
 
-            for i in range(num_queries):
-                mask = batch.distances[i] <= radius
-                filtered_keys = batch.keys[i][mask]
-                filtered_dists = batch.distances[i][mask]
-                n = len(filtered_keys)
-                keys_array[i, :n] = filtered_keys
-                distances_array[i, :n] = filtered_dists
-                counts.append(n)
+            # Apply mask: set invalid entries to 0/inf
+            keys_array = np.where(mask, batch.keys, 0)
+            distances_array = np.where(mask, batch.distances, np.inf)
 
             return BatchMatches(
                 keys=keys_array,
                 distances=distances_array,
-                counts=np.array(counts, dtype=np.int64),
+                counts=counts,
                 visited_members=batch.visited_members,
                 computed_distances=batch.computed_distances,
             )

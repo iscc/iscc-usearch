@@ -10,7 +10,7 @@ Confirms expected behavior for merging search results across shards:
 """
 
 import numpy as np
-from usearch.index import Index
+from usearch.index import Index, Matches
 
 from iscc_usearch.sharded import ShardedIndex
 
@@ -352,3 +352,33 @@ def test_merge_batch_with_radius_filter(tmp_path):
     # Batch query with radius - triggers batch merge with radius filtering
     batch_matches = index2.search(vectors[:3], count=10, radius=0.5)
     assert len(batch_matches) == 3
+
+
+def test_merge_single_matches_multiple_sources(tmp_path):
+    # type: () -> None
+    """Test _merge_single_matches with 3+ sources to cover else branch."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+
+    # Create 3 synthetic Matches objects
+    matches1 = Matches(
+        keys=np.array([1, 2, 3], dtype=np.uint64),
+        distances=np.array([0.1, 0.2, 0.3], dtype=np.float32),
+    )
+    matches2 = Matches(
+        keys=np.array([4, 5, 6], dtype=np.uint64),
+        distances=np.array([0.15, 0.25, 0.35], dtype=np.float32),
+    )
+    matches3 = Matches(
+        keys=np.array([7, 8, 9], dtype=np.uint64),
+        distances=np.array([0.05, 0.18, 0.28], dtype=np.float32),
+    )
+
+    # Call _merge_single_matches with 3 sources (triggers else branch)
+    merged = index._merge_single_matches([matches1, matches2, matches3], count=5, radius=float("inf"))
+
+    # Verify merged results are sorted by distance
+    assert len(merged.keys) == 5
+    assert merged.keys[0] == 7  # distance 0.05
+    assert merged.keys[1] == 1  # distance 0.1
+    assert merged.distances[0] == 0.05
+    assert merged.distances[1] == 0.1
