@@ -109,7 +109,7 @@ class ShardedIndex:
                 self.load()
         elif not view:
             # Create first active shard
-            self._active_shard = Index(**self._config)
+            self._active_shard = self._create_shard()
 
     # === Core Operations ===
 
@@ -138,7 +138,7 @@ class ShardedIndex:
             raise RuntimeError("Cannot add to index opened in view mode")
 
         if self._active_shard is None:
-            self._active_shard = Index(**self._config)
+            self._active_shard = self._create_shard()
 
         # Delegate to active shard
         result = self._active_shard.add(keys, vectors, copy=copy, threads=threads, log=log, progress=progress)
@@ -311,7 +311,7 @@ class ShardedIndex:
         shard_files = self._discover_shards()
 
         if not shard_files:
-            self._active_shard = Index(**self._config)
+            self._active_shard = self._create_shard()
             self._view_shards = None
             return
 
@@ -327,7 +327,7 @@ class ShardedIndex:
             if view_paths:
                 view_shards = Indexes()
                 for p in view_paths:
-                    viewed = Index.restore(str(p), view=True)
+                    viewed = self._restore_shard(p, view=True)
                     assert viewed is not None
                     self._viewed_indexes.append(viewed)
                     view_shards.merge(viewed)
@@ -336,7 +336,7 @@ class ShardedIndex:
                 self._view_shards = None
 
             # Load active shard (writable) and track its path for save()
-            active_shard = Index.restore(str(active_path), view=False)
+            active_shard = self._restore_shard(active_path, view=False)
             assert active_shard is not None
             self._active_shard = active_shard
             self._active_shard_path = active_path
@@ -375,7 +375,7 @@ class ShardedIndex:
             self._viewed_indexes = []
             view_shards = Indexes()
             for p in shard_files:
-                viewed = Index.restore(str(p), view=True)
+                viewed = self._restore_shard(p, view=True)
                 assert viewed is not None
                 self._viewed_indexes.append(viewed)
                 view_shards.merge(viewed)
@@ -622,6 +622,14 @@ class ShardedIndex:
 
     # === Helper Methods ===
 
+    def _create_shard(self) -> Index:
+        """Create a new shard. Override in subclasses for custom shard types."""
+        return Index(**self._config)
+
+    def _restore_shard(self, path: Path, view: bool) -> Index | None:
+        """Restore a shard from disk. Override in subclasses for custom shard types."""
+        return Index.restore(str(path), view=view)
+
     def _discover_shards(self) -> list[Path]:
         """Return sorted list of shard_*.usearch files."""
         shards = list(self._path.glob("shard_*.usearch"))
@@ -671,7 +679,7 @@ class ShardedIndex:
         # Load the saved shard in view mode and merge into Indexes
         # Workaround for usearch bug #643: Indexes(paths=[...]) segfaults
         # Keep reference to prevent GC (Indexes.merge stores references, not copies)
-        viewed_shard = Index.restore(str(shard_path), view=True)
+        viewed_shard = self._restore_shard(shard_path, view=True)
         assert viewed_shard is not None
         self._viewed_indexes.append(viewed_shard)
         view_shards = self._view_shards
@@ -681,7 +689,7 @@ class ShardedIndex:
         view_shards.merge(viewed_shard)
 
         # Create new active shard
-        self._active_shard = Index(**self._config)
+        self._active_shard = self._create_shard()
 
     def _empty_results(self, vectors: NDArray[Any], count: int, is_single: bool) -> Matches | BatchMatches:
         """Return empty results in the appropriate format."""
