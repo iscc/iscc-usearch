@@ -96,3 +96,42 @@ def test_init_with_all_config_options(tmp_path):
 def test_default_shard_size():
     """Test DEFAULT_SHARD_SIZE constant."""
     assert DEFAULT_SHARD_SIZE == 1024 * 1024 * 1024  # 1GB
+
+
+def test_init_without_ndim_raises_when_no_shards(tmp_path):
+    """Test that init without ndim raises error when no existing shards."""
+    import pytest
+
+    with pytest.raises(ValueError, match="ndim is required"):
+        ShardedIndex(path=tmp_path)
+
+
+def test_init_without_ndim_autodetects_from_existing_shards(tmp_path):
+    """Test that init without ndim auto-detects from existing shards."""
+    # Create and save an index with known ndim
+    index1 = ShardedIndex(ndim=128, path=tmp_path)
+    vectors = np.random.rand(5, 128).astype(np.float32)
+    index1.add(list(range(5)), vectors)
+    index1.save()
+
+    # Reopen without specifying ndim - should auto-detect
+    index2 = ShardedIndex(path=tmp_path)
+
+    assert index2.ndim == 128
+    assert len(index2) == 5
+
+
+def test_init_without_ndim_view_mode_autodetects(tmp_path):
+    """Test that init without ndim auto-detects in view mode."""
+    # Create and save an index
+    index1 = ShardedIndex(ndim=256, path=tmp_path)
+    vectors = np.random.rand(3, 256).astype(np.float32)
+    index1.add(list(range(3)), vectors)
+    index1.save()
+
+    # Reopen in view mode without ndim
+    index2 = ShardedIndex(path=tmp_path, view=True)
+
+    assert index2.ndim == 256
+    assert len(index2) == 3
+    assert index2._view_mode is True

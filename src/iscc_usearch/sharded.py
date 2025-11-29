@@ -42,7 +42,7 @@ class ShardedIndex:
     CONCURRENCY: Single-process only. No file locking. Use async/await within
     a single process for concurrent access.
 
-    :param ndim: Number of vector dimensions
+    :param ndim: Number of vector dimensions (auto-detected from existing shards if omitted)
     :param metric: Distance metric (MetricKind or CompiledMetric)
     :param dtype: Scalar type for vectors (ScalarKind)
     :param connectivity: HNSW connectivity parameter (M)
@@ -58,7 +58,7 @@ class ShardedIndex:
     def __init__(
         self,
         *,
-        ndim: int,
+        ndim: int | None = None,
         metric: MetricKind | Any = MetricKind.Cos,
         dtype: ScalarKind | str | None = None,
         connectivity: int | None = None,
@@ -75,6 +75,21 @@ class ShardedIndex:
         self._shard_size = shard_size
         self._view_mode = view
 
+        # Initialize shard containers early (used by _discover_shards)
+        self._view_shards: Indexes | None = None
+        self._active_shard: Index | None = None
+        self._active_shard_path: Path | None = None
+        self._viewed_indexes: list[Index] = []
+
+        # Create directory if needed
+        self._path.mkdir(parents=True, exist_ok=True)
+
+        # Discover existing shards
+        existing_shards = self._discover_shards()
+
+        # Auto-detect ndim from existing shards if not provided
+        ndim, metric, dtype = self._resolve_config(ndim, metric, dtype, existing_shards)
+
         # Store config for creating new shards
         self._config: dict[str, Any] = {
             "ndim": ndim,
@@ -86,21 +101,6 @@ class ShardedIndex:
             "multi": multi,
             "enable_key_lookups": enable_key_lookups,
         }
-
-        # Initialize shard containers
-        self._view_shards: Indexes | None = None
-        self._active_shard: Index | None = None
-        # Path to the active shard file (None if new/unsaved)
-        self._active_shard_path: Path | None = None
-        # Keep references to viewed Index objects to prevent garbage collection
-        # (Indexes.merge only stores references, not copies)
-        self._viewed_indexes: list[Index] = []
-
-        # Create directory if needed
-        self._path.mkdir(parents=True, exist_ok=True)
-
-        # Discover existing shards
-        existing_shards = self._discover_shards()
 
         if existing_shards:
             if view:
@@ -621,6 +621,41 @@ class ShardedIndex:
         raise NotImplementedError("vectors property not supported for ShardedIndex")
 
     # === Helper Methods ===
+
+    def _resolve_config(
+        self,
+        ndim: int | None,
+        metric: MetricKind | Any,
+        dtype: ScalarKind | str | None,
+        existing_shards: list[Path],
+    ) -> tuple[int, MetricKind | Any, ScalarKind | str | None]:
+        """Resolve ndim/metric/dtype from existing shards or validate provided values.
+
+        :param ndim: Provided ndim or None for auto-detection
+        :param metric: Provided metric
+        :param dtype: Provided dtype
+        :param existing_shards: List of existing shard paths
+        :return: Resolved (ndim, metric, dtype) tuple
+        :raises ValueError: If ndim is None and no existing shards found
+        """
+        if not existing_shards:
+            if ndim is None:
+                raise ValueError("ndim is required when creating a new index (no existing shards found)")
+            return ndim, metric, dtype
+
+        # Read metadata from first shard
+        meta = Index.metadata(str(existing_shards[0]))
+        if meta is None:  # pragma: no cover - shard files are always valid in practice
+            if ndim is None:
+                raise ValueError("ndim is required (failed to read shard metadata)")
+            return ndim, metric, dtype
+
+        # Auto-detect from existing shards if not provided
+        resolved_ndim = ndim if ndim is not None else meta["dimensions"]
+        resolved_dtype = dtype if dtype is not None else meta["kind_scalar"]
+        resolved_metric = metric
+
+        return resolved_ndim, resolved_metric, resolved_dtype
 
     def _create_shard(self) -> Index:
         """Create a new shard. Override in subclasses for custom shard types."""

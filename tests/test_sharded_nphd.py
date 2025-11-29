@@ -296,3 +296,46 @@ def test_load_empty_directory(tmp_path):
     # max_dim should remain as initialized
     assert idx.max_dim == 128
     assert idx.max_bytes == 16
+
+
+def test_init_without_max_dim_raises_when_no_shards(tmp_path):
+    """Test that init without max_dim raises error when no existing shards."""
+    with pytest.raises(ValueError, match="max_dim is required"):
+        ShardedNphdIndex(path=tmp_path)
+
+
+def test_init_without_max_dim_autodetects_from_existing_shards(tmp_path):
+    """Test that init without max_dim auto-detects from existing shards."""
+    path = tmp_path / "shards"
+
+    # Create and save an index with known max_dim
+    idx1 = ShardedNphdIndex(max_dim=192, path=path)
+    v1 = np.array([1, 2, 3, 4, 5], dtype=np.uint8)
+    idx1.add(1, v1)
+    idx1.save()
+
+    # Reopen without specifying max_dim - should auto-detect
+    idx2 = ShardedNphdIndex(path=path)
+
+    assert idx2.max_dim == 192
+    assert idx2.max_bytes == 24
+    assert len(idx2) == 1
+
+
+def test_init_without_max_dim_view_mode_autodetects(tmp_path):
+    """Test that init without max_dim auto-detects in view mode."""
+    path = tmp_path / "shards"
+
+    # Create and save an index
+    idx1 = ShardedNphdIndex(max_dim=128, path=path)
+    v1 = np.array([1, 2, 3], dtype=np.uint8)
+    idx1.add(1, v1)
+    idx1.save()
+
+    # Reopen in view mode without max_dim
+    idx2 = ShardedNphdIndex(path=path, view=True)
+
+    assert idx2.max_dim == 128
+    assert idx2.max_bytes == 16
+    assert len(idx2) == 1
+    assert idx2._view_mode is True

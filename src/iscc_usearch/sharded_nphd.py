@@ -26,7 +26,7 @@ class ShardedNphdIndex(ShardedIndex):
     CONCURRENCY: Single-process only. No file locking. Use async/await within
     a single process for concurrent access.
 
-    :param max_dim: Maximum number of bits per vector (default 256)
+    :param max_dim: Maximum bits per vector (auto-detected from existing shards if omitted)
     :param path: Directory path for shard storage (required)
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
     :param view: Load existing shards in view mode only (read-only)
@@ -38,13 +38,19 @@ class ShardedNphdIndex(ShardedIndex):
     def __init__(
         self,
         *,
-        max_dim: int = 256,
+        max_dim: int | None = None,
         path: str | os.PathLike,
         **kwargs: Any,
     ) -> None:
         """Initialize a sharded NPHD index."""
-        self._max_dim = max_dim
-        self._max_bytes = max_dim // 8
+        # Store path early for _resolve_max_dim
+        self._path = Path(path)
+        self._path.mkdir(parents=True, exist_ok=True)
+
+        # Resolve max_dim from existing shards if not provided
+        resolved_max_dim = self._resolve_max_dim(max_dim)
+        self._max_dim = resolved_max_dim
+        self._max_bytes = resolved_max_dim // 8
 
         # Remove NPHD-incompatible params (computed from max_dim)
         kwargs.pop("ndim", None)
@@ -52,12 +58,41 @@ class ShardedNphdIndex(ShardedIndex):
         kwargs.pop("dtype", None)
 
         super().__init__(
-            ndim=max_dim + 8,  # +8 bits for length signal byte
+            ndim=resolved_max_dim + 8,  # +8 bits for length signal byte
             metric=create_nphd_metric(),
             dtype="b1",  # ScalarKind.B1
             path=path,
             **kwargs,
         )
+
+    def _resolve_max_dim(self, max_dim: int | None) -> int:
+        """Resolve max_dim from existing shards or use provided value.
+
+        :param max_dim: Provided max_dim or None for auto-detection
+        :return: Resolved max_dim value
+        :raises ValueError: If max_dim is None and no existing shards found
+        """
+        # Check for existing shards
+        existing_shards = sorted(
+            self._path.glob("shard_*.usearch"),
+            key=lambda p: int(p.stem.split("_")[1]),
+        )
+
+        if not existing_shards:
+            if max_dim is None:
+                raise ValueError("max_dim is required when creating a new index (no existing shards found)")
+            return max_dim
+
+        if max_dim is not None:
+            return max_dim
+
+        # Read metadata from first shard and compute max_dim
+        meta = Index.metadata(str(existing_shards[0]))
+        if meta is None:  # pragma: no cover - shard files are always valid in practice
+            raise ValueError("max_dim is required (failed to read shard metadata)")
+
+        # ndim = max_dim + 8 (length signal byte), so max_dim = ndim - 8
+        return meta["dimensions"] - 8
 
     def _create_shard(self) -> Index:
         """Create a new Index shard with NPHD metric.
