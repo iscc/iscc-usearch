@@ -23,6 +23,8 @@ from usearch.index import (
     ScalarKind,
 )
 
+from iscc_usearch.utils import timer
+
 __all__ = ["ShardedIndex"]
 
 # Default shard size: 1GB
@@ -291,7 +293,8 @@ class ShardedIndex:
             return
 
         shard_path = self._get_active_shard_path()
-        self._active_shard.save(shard_path, progress=progress)
+        with timer(f"ShardedIndex save {shard_path.name}"):
+            self._active_shard.save(shard_path, progress=progress)
         self._active_shard_path = shard_path
 
     def load(
@@ -312,30 +315,31 @@ class ShardedIndex:
             self._view_shards = None
             return
 
-        # All but the last shard go into view mode
-        view_paths = shard_files[:-1]
-        active_path = shard_files[-1]
+        with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}"):
+            # All but the last shard go into view mode
+            view_paths = shard_files[:-1]
+            active_path = shard_files[-1]
 
-        # Create Indexes for view shards using workaround for usearch bug #643
-        # (Indexes(paths=[...]) segfaults, so we restore individually and merge)
-        # Keep references to prevent GC (Indexes.merge stores references, not copies)
-        self._viewed_indexes = []
-        if view_paths:
-            view_shards = Indexes()
-            for p in view_paths:
-                viewed = Index.restore(str(p), view=True)
-                assert viewed is not None
-                self._viewed_indexes.append(viewed)
-                view_shards.merge(viewed)
-            self._view_shards = view_shards
-        else:
-            self._view_shards = None
+            # Create Indexes for view shards using workaround for usearch bug #643
+            # (Indexes(paths=[...]) segfaults, so we restore individually and merge)
+            # Keep references to prevent GC (Indexes.merge stores references, not copies)
+            self._viewed_indexes = []
+            if view_paths:
+                view_shards = Indexes()
+                for p in view_paths:
+                    viewed = Index.restore(str(p), view=True)
+                    assert viewed is not None
+                    self._viewed_indexes.append(viewed)
+                    view_shards.merge(viewed)
+                self._view_shards = view_shards
+            else:
+                self._view_shards = None
 
-        # Load active shard (writable) and track its path for save()
-        active_shard = Index.restore(str(active_path), view=False)
-        assert active_shard is not None
-        self._active_shard = active_shard
-        self._active_shard_path = active_path
+            # Load active shard (writable) and track its path for save()
+            active_shard = Index.restore(str(active_path), view=False)
+            assert active_shard is not None
+            self._active_shard = active_shard
+            self._active_shard_path = active_path
 
         # Update config from loaded shard to ensure new shards match existing ones
         self._config["ndim"] = active_shard.ndim
@@ -364,18 +368,19 @@ class ShardedIndex:
             self._active_shard = None
             return
 
-        # All shards in view mode (read-only)
-        # Using workaround for usearch bug #643: Indexes(paths=[...]) segfaults
-        # Keep references to prevent GC (Indexes.merge stores references, not copies)
-        self._viewed_indexes = []
-        view_shards = Indexes()
-        for p in shard_files:
-            viewed = Index.restore(str(p), view=True)
-            assert viewed is not None
-            self._viewed_indexes.append(viewed)
-            view_shards.merge(viewed)
-        self._view_shards = view_shards
-        self._active_shard = None
+        with timer(f"ShardedIndex view {len(shard_files)} shards from {self._path}"):
+            # All shards in view mode (read-only)
+            # Using workaround for usearch bug #643: Indexes(paths=[...]) segfaults
+            # Keep references to prevent GC (Indexes.merge stores references, not copies)
+            self._viewed_indexes = []
+            view_shards = Indexes()
+            for p in shard_files:
+                viewed = Index.restore(str(p), view=True)
+                assert viewed is not None
+                self._viewed_indexes.append(viewed)
+                view_shards.merge(viewed)
+            self._view_shards = view_shards
+            self._active_shard = None
 
     @staticmethod
     def restore(
@@ -657,7 +662,8 @@ class ShardedIndex:
             shard_path = self._get_shard_path(len(existing_shards))
 
         # Save current active shard
-        self._active_shard.save(str(shard_path))
+        with timer(f"ShardedIndex rotate save {shard_path.name}"):
+            self._active_shard.save(str(shard_path))
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
 
