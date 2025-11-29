@@ -554,13 +554,14 @@ class ShardedIndex:
     def serialized_length(self) -> int:
         """Serialized length of active shard.
 
-        Note: This property may not work in all usearch versions.
+        Note: usearch pybind11 binding bug - property requires config arg that isn't exposed.
+        Falls back to memory_usage on TypeError.
         """
         if self._active_shard is not None:
             try:
                 return self._active_shard.serialized_length
             except TypeError:
-                # usearch version compatibility issue
+                # usearch pybind11 bug: serialized_length missing default config arg
                 return self._active_shard.memory_usage
         return 0
 

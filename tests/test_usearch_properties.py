@@ -290,7 +290,13 @@ def test_hardware_acceleration_property():
 
 def test_serialized_length_property():
     """idx.serialized_length returns int > 0 after add."""
-    pytest.skip("serialized_length property is broken in usearch - requires config argument")
+    # Bug in usearch pybind11 bindings: The C++ method has signature
+    # `serialized_length(serialization_config_t config = {})` but pybind11
+    # doesn't expose the default argument for struct types. The binding
+    # `def_property_readonly("serialized_length", &dense_index_py_t::serialized_length)`
+    # requires the caller to provide the config argument explicitly.
+    # Fix upstream: use lambda `[](auto& self) { return self.serialized_length(); }`
+    pytest.skip("usearch pybind11 bug: serialized_length property missing default config arg")
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
     idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
 
