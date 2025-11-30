@@ -53,3 +53,146 @@ def test_get_no_active_shard_multiple(tmp_path):
     result = index.get([1, 2, 3])
 
     assert result == [None, None, None]
+
+
+def test_get_across_shards_single(tmp_path):
+    """Test get retrieves vectors from any shard (single key)."""
+    # Create index and add vectors with specific values we can verify
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    vec1 = np.arange(64, dtype=np.float32)
+    vec2 = np.arange(64, dtype=np.float32) * 2
+    index.add(1, vec1)
+    index.add(2, vec2)
+    index.save()
+
+    # Reload to have view shards
+    index2 = ShardedIndex(ndim=64, path=tmp_path)
+    assert index2.shard_count >= 2
+
+    # Both vectors should be retrievable regardless of which shard they're in
+    result1 = index2.get(1)
+    result2 = index2.get(2)
+
+    assert result1 is not None
+    assert result2 is not None
+    # Verify we got the right vectors (allowing for precision loss)
+    assert np.allclose(result1, vec1, atol=0.01)
+    assert np.allclose(result2, vec2, atol=0.01)
+
+
+def test_get_across_shards_batch(tmp_path):
+    """Test get retrieves vectors from multiple shards (batch)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    vectors = {
+        1: np.arange(64, dtype=np.float32),
+        2: np.arange(64, dtype=np.float32) * 2,
+        3: np.arange(64, dtype=np.float32) * 3,
+    }
+    for key, vec in vectors.items():
+        index.add(key, vec)
+    index.save()
+
+    index2 = ShardedIndex(ndim=64, path=tmp_path)
+
+    # Get all keys including one that doesn't exist
+    results = index2.get([1, 2, 3, 999])
+
+    assert len(results) == 4
+    assert np.allclose(results[0], vectors[1], atol=0.01)
+    assert np.allclose(results[1], vectors[2], atol=0.01)
+    assert np.allclose(results[2], vectors[3], atol=0.01)
+    assert results[3] is None  # Missing key
+
+
+def test_get_view_mode_across_shards(tmp_path):
+    """Test get works in view mode across shards."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    vec = np.arange(64, dtype=np.float32)
+    index.add(1, vec)
+    index.add(2, vec * 2)
+    index.save()
+
+    # Open in view mode
+    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
+    assert index2._active_shard is None
+
+    result1 = index2.get(1)
+    result2 = index2.get(2)
+
+    assert result1 is not None
+    assert result2 is not None
+    assert np.allclose(result1, vec, atol=0.01)
+
+
+def test_get_missing_key_returns_none(tmp_path):
+    """Test get returns None for missing single key."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.random.rand(64).astype(np.float32))
+
+    result = index.get(999)
+
+    assert result is None
+
+
+def test_get_empty_keys_array(tmp_path):
+    """Test get with empty keys array returns empty list."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.random.rand(64).astype(np.float32))
+
+    result = index.get([])
+
+    assert result == []
+
+
+def test_get_enable_key_lookups_false_single(tmp_path):
+    """Test get returns None for single key when enable_key_lookups=False."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.random.rand(64).astype(np.float32))
+    index.save()
+
+    # Reload with enable_key_lookups=False
+    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
+
+    # Should return None (safe, unlike usearch garbage)
+    assert index2.get(1) is None
+
+
+def test_get_enable_key_lookups_false_batch(tmp_path):
+    """Test get returns list of None when enable_key_lookups=False."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add([1, 2], np.random.rand(2, 64).astype(np.float32))
+    index.save()
+
+    # Reload with enable_key_lookups=False
+    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
+
+    result = index2.get([1, 2])
+    assert result == [None, None]
+
+
+def test_get_early_exit_all_keys_found(tmp_path):
+    """Test get early exit when all keys found before processing all view shards."""
+    # type: () -> None
+    # shard_size is in bytes. Use 1 byte to force rotation after each vector add.
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    vec1 = np.arange(64, dtype=np.float32)
+    vec2 = np.arange(64, dtype=np.float32) * 2
+    vec3 = np.arange(64, dtype=np.float32) * 3
+
+    # Add 3 vectors to create multiple shards (one per shard due to tiny shard_size)
+    index.add(1, vec1)
+    index.add(2, vec2)
+    index.add(3, vec3)
+    index.save()
+
+    # Verify we have multiple view shards
+    assert len(index._viewed_indexes) >= 2
+
+    # Request only key 1 which is in the first view shard.
+    # After processing first view shard, found.all() = True.
+    # The break statement skips remaining view shards.
+    results = index.get([1])
+
+    assert len(results) == 1
+    assert results[0] is not None
+    assert np.allclose(results[0], vec1, atol=0.01)

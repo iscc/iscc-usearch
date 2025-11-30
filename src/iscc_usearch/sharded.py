@@ -223,58 +223,191 @@ class ShardedIndex:
         keys: int | Any,
         dtype: Any = None,
     ) -> NDArray[Any] | list | None:
-        """Retrieve vectors by key from active shard only.
+        """Retrieve vectors by key from any shard.
 
-        Note: View shards do not support get(). Only keys in the active shard
-        can be retrieved.
+        When enable_key_lookups=True (default), searches all shards.
+        When enable_key_lookups=False, returns None for all keys (safe, unlike usearch).
 
         :param keys: Integer key(s) to lookup
         :param dtype: Optional data type for returned vectors
         :return: Vector(s) or None for missing keys
         """
-        if self._active_shard is None:
-            # Handle single vs multiple keys
+        # Match usearch behavior: no key lookups = can't find keys
+        # Unlike usearch, we return None instead of garbage
+        if not self._config.get("enable_key_lookups", True):
             if isinstance(keys, int):
                 return None
             return [None] * len(keys)
 
-        return self._active_shard.get(keys, dtype=dtype)
+        if isinstance(keys, int):
+            return self._get_single(keys, dtype)
+        return self._get_batch(keys, dtype)
+
+    def _get_single(self, key: int, dtype: Any = None) -> NDArray[Any] | None:
+        """Get a single vector by key from any shard."""
+        # Check active shard first
+        if self._active_shard is not None:
+            if self._active_shard.contains(key):
+                return self._active_shard.get(key, dtype=dtype)
+
+        # Check view shards
+        for idx in self._viewed_indexes:
+            if idx.contains(key):
+                return idx.get(key, dtype=dtype)
+
+        return None
+
+    def _get_batch(self, keys: Any, dtype: Any = None) -> list:
+        """Get multiple vectors by keys from any shard."""
+        keys_arr = np.asarray(keys, dtype=np.uint64)
+        n = len(keys_arr)
+        if n == 0:
+            return []
+
+        results: list[NDArray[Any] | None] = [None] * n
+        found = np.zeros(n, dtype=bool)
+
+        def process_shard(idx: Index) -> None:
+            """Process a single shard, updating results for unfound keys."""
+            nonlocal found
+            unfound_mask = ~found
+            unfound_indices = np.where(unfound_mask)[0]
+            unfound_keys = keys_arr[unfound_indices]
+
+            # Check which keys exist in this shard
+            exists = np.asarray(idx.contains(unfound_keys.tolist()), dtype=bool)
+            if not exists.any():
+                return
+
+            # Get vectors for existing keys (batch operation)
+            exist_local_indices = np.where(exists)[0]
+            exist_keys = unfound_keys[exist_local_indices]
+            exist_orig_indices = unfound_indices[exist_local_indices]
+
+            vectors = idx.get(exist_keys.tolist(), dtype=dtype)
+
+            # Store results
+            for orig_idx, vec in zip(exist_orig_indices, vectors):
+                results[orig_idx] = vec
+                found[orig_idx] = True
+
+        # Process active shard first
+        if self._active_shard is not None:
+            process_shard(self._active_shard)
+
+        # Process view shards
+        for idx in self._viewed_indexes:
+            if found.all():
+                break
+            process_shard(idx)
+
+        return results
 
     def contains(self, keys: int | Any) -> bool | NDArray[np.bool_]:
-        """Check if keys exist in active shard only.
+        """Check if keys exist in any shard.
 
-        Note: View shards do not support contains(). Only keys in the active
-        shard are checked.
+        When enable_key_lookups=True (default), checks all shards.
+        When enable_key_lookups=False, returns False for all keys (matches usearch).
 
         :param keys: Integer key(s) to check
         :return: Boolean or array of booleans
         """
-        if self._active_shard is None:
+        # Match usearch behavior: no key lookups = always False
+        if not self._config.get("enable_key_lookups", True):
             if isinstance(keys, int):
                 return False
             return np.zeros(len(keys), dtype=bool)
 
-        return self._active_shard.contains(keys)
+        if isinstance(keys, int):
+            return self._contains_single(keys)
+        return self._contains_batch(keys)
+
+    def _contains_single(self, key: int) -> bool:
+        """Check if a single key exists in any shard."""
+        # Check active shard first (most likely location for recent keys)
+        if self._active_shard is not None:
+            if self._active_shard.contains(key):
+                return True
+
+        # Check view shards
+        for idx in self._viewed_indexes:
+            if idx.contains(key):
+                return True
+
+        return False
+
+    def _contains_batch(self, keys: Any) -> NDArray[np.bool_]:
+        """Check if multiple keys exist in any shard (OR aggregation)."""
+        keys_arr = np.asarray(keys)
+        if len(keys_arr) == 0:
+            return np.array([], dtype=bool)
+
+        result = np.zeros(len(keys_arr), dtype=bool)
+
+        # Check active shard
+        if self._active_shard is not None:
+            active_result = self._active_shard.contains(keys_arr)
+            result |= np.asarray(active_result, dtype=bool)
+
+        # Check view shards
+        for idx in self._viewed_indexes:
+            if result.all():
+                break  # Short-circuit: all keys found
+            shard_result = idx.contains(keys_arr)
+            result |= np.asarray(shard_result, dtype=bool)
+
+        return result
 
     def __contains__(self, keys: int | Any) -> bool | NDArray[np.bool_]:
         """Support 'in' operator."""
         return self.contains(keys)
 
     def count(self, keys: int | Any) -> int | NDArray[np.uint64]:
-        """Count occurrences of keys in active shard only.
+        """Count occurrences of keys across all shards (sum aggregation).
 
-        Note: View shards do not support count(). Only keys in the active
-        shard are counted.
+        When enable_key_lookups=True (default), counts across all shards.
+        When enable_key_lookups=False, returns 0 for all keys (matches usearch).
 
         :param keys: Integer key(s) to count
         :return: Count or array of counts
         """
-        if self._active_shard is None:
+        # Match usearch behavior: no key lookups = can't count keys
+        if not self._config.get("enable_key_lookups", True):
             if isinstance(keys, int):
                 return 0
             return np.zeros(len(keys), dtype=np.uint64)
 
-        return self._active_shard.count(keys)
+        if isinstance(keys, int):
+            return self._count_single(keys)
+        return self._count_batch(keys)
+
+    def _count_single(self, key: int) -> int:
+        """Count occurrences of a single key across all shards."""
+        total = 0
+
+        if self._active_shard is not None:
+            total += self._active_shard.count(key)
+
+        for idx in self._viewed_indexes:
+            total += idx.count(key)
+
+        return total
+
+    def _count_batch(self, keys: Any) -> NDArray[np.uint64]:
+        """Count occurrences of multiple keys across all shards (sum)."""
+        keys_arr = np.asarray(keys)
+        if len(keys_arr) == 0:
+            return np.array([], dtype=np.uint64)
+
+        total = np.zeros(len(keys_arr), dtype=np.uint64)
+
+        if self._active_shard is not None:
+            total += np.asarray(self._active_shard.count(keys_arr), dtype=np.uint64)
+
+        for idx in self._viewed_indexes:
+            total += np.asarray(idx.count(keys_arr), dtype=np.uint64)
+
+        return total
 
     # === Persistence ===
 
@@ -667,17 +800,18 @@ class ShardedIndex:
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
         """Restore a shard from disk. Override in subclasses for custom shard types.
 
-        When view=True, disables key lookups to skip expensive hash map population
-        (~2x speedup). Safe because view shards only support search(), not get/contains.
+        When enable_key_lookups=False, skips expensive hash map population (~2x speedup)
+        but disables contains/get/count operations.
         """
         meta = Index.metadata(str(path))
         if meta is None:  # pragma: no cover - shard files are always valid in practice
             return None
+        enable_lookups = self._config.get("enable_key_lookups", True)
         idx = Index(
             ndim=meta["dimensions"],
             metric=meta["kind_metric"],
             dtype=meta["kind_scalar"],
-            enable_key_lookups=not view,  # Disable for view shards (2x speedup)
+            enable_key_lookups=enable_lookups,
         )
         if view:
             idx.view(str(path))
