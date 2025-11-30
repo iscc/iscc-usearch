@@ -111,17 +111,18 @@ class ShardedNphdIndex(ShardedIndex):
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
         """Restore an Index shard from disk and restore NPHD metric.
 
-        When view=True, disables key lookups to skip expensive hash map population
-        (~2x speedup). Safe because view shards only support search(), not get/contains.
+        When enable_key_lookups=False, skips expensive hash map population (~2x speedup)
+        but disables contains/get/count operations.
         """
         meta = Index.metadata(str(path))
         if meta is None:  # pragma: no cover - shard files are always valid in practice
             return None
+        enable_lookups = self._config.get("enable_key_lookups", True)
         shard = Index(
             ndim=meta["dimensions"],
             metric=create_nphd_metric(),
             dtype=meta["kind_scalar"],
-            enable_key_lookups=not view,  # Disable for view shards (2x speedup)
+            enable_key_lookups=enable_lookups,
         )
         if view:
             shard.view(str(path))
@@ -229,42 +230,29 @@ class ShardedNphdIndex(ShardedIndex):
         keys: int | Any,
         dtype: Any = None,
     ) -> NDArray[Any] | list | None:
-        """Retrieve unpadded variable-length vectors by key(s).
+        """Retrieve unpadded variable-length vectors by key(s) from any shard.
 
-        Note: View shards do not support get(). Only keys in the active shard
-        can be retrieved.
+        When enable_key_lookups=True (default), searches all shards.
+        When enable_key_lookups=False, returns None for all keys.
 
         :param keys: Integer key(s) to lookup
         :param dtype: Optional data type for returned vectors
         :return: Unpadded vector(s) or None for missing keys
         """
-        # Handle single key - check existence first (workaround for usearch bug)
+        # Single key case
         if isinstance(keys, int):
-            if not self.contains(keys):
+            result = super().get(keys, dtype=dtype)
+            if result is None:
                 return None
-            results = super().get(keys, dtype=dtype)
-            if results is None:  # pragma: no cover - defensive check
-                return None
-            return unpad_vectors(results.reshape(1, -1))[0]
+            return unpad_vectors(result.reshape(1, -1))[0]
 
-        # Handle multiple keys - check existence for each
-        exists = self.contains(keys)
+        # Multiple keys case - parent returns list with None for missing keys
         results = super().get(keys, dtype=dtype)
-
         if results is None:  # pragma: no cover - defensive check
             return [None] * len(keys)
 
-        # Unpad existing results, return None for missing keys
-        unpacked = []
-        results_list = list(results)  # Explicit list conversion for type safety
-        for r, e in zip(results_list, exists):
-            if not e:
-                unpacked.append(None)
-            elif r is None:  # pragma: no cover - defensive check
-                unpacked.append(None)
-            else:
-                unpacked.append(unpad_vectors(r.reshape(1, -1))[0])
-        return unpacked
+        # Unpad found vectors, preserve None for missing keys
+        return [unpad_vectors(r.reshape(1, -1))[0] if r is not None else None for r in results]
 
     def load(
         self,

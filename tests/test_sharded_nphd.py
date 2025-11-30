@@ -222,22 +222,26 @@ def test_repr(tmp_path):
     assert "max_dim=256" in repr_str
 
 
-def test_get_on_view_only_index_returns_none(tmp_path):
-    """Get on view-only index (no active shard) returns None."""
+def test_get_on_view_only_index(tmp_path):
+    """Get on view-only index retrieves vectors from view shards."""
     path = tmp_path / "shards"
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
     idx = ShardedNphdIndex(max_dim=256, path=path)
-    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
+    idx.add(1, v1)
     idx.save()
 
     # Open in view mode - no active shard
     viewed = ShardedNphdIndex(max_dim=256, path=path, view=True)
+    assert viewed._active_shard is None
 
-    # get() on view-only should return None (only active shard supports get)
+    # get() on view-only should retrieve vectors from view shards
     result_single = viewed.get(1)
-    result_multi = viewed.get([1, 2])
+    result_multi = viewed.get([1, 999])
 
-    assert result_single is None
-    assert result_multi == [None, None]
+    np.testing.assert_array_equal(result_single, v1)
+    assert len(result_multi) == 2
+    np.testing.assert_array_equal(result_multi[0], v1)
+    assert result_multi[1] is None
 
 
 def test_get_multiple_keys_with_none_results(tmp_path):
