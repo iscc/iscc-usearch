@@ -138,6 +138,7 @@ For concurrent access, use a single process with async/await patterns.
 | Method | Description |
 |--------|-------------|
 | `add(keys, vectors)` | Add vectors with integer keys |
+| `upsert(keys, vectors)` | Insert or update vectors (idempotent) |
 | `search(vectors, count)` | Find k nearest neighbors |
 | `get(keys)` | Retrieve vectors by key |
 | `save(path)` | Save index to file |
