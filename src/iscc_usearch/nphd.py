@@ -75,6 +75,9 @@ class NphdIndex(Index):
     CONCURRENCY: Single-process only. The underlying .usearch files have no file locking
     or multi-process coordination. Running multiple processes against the same index may
     corrupt data. Use a single process with async/await for concurrent connections.
+
+    UPSERT: Batch upsert requires uniform-length vectors. For variable-length batch upsert,
+    call upsert() individually for each vector: `for k, v in zip(keys, vecs): idx.upsert(k, v)`
     """
 
     def __init__(self, max_dim=256, **kwargs):
