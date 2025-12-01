@@ -23,12 +23,92 @@ from usearch.index import (
     ScalarKind,
 )
 
+from iscc_usearch.bloom import ScalableBloomFilter
 from iscc_usearch.utils import timer
 
-__all__ = ["ShardedIndex"]
+__all__ = ["ShardedIndex", "ShardedIndexedKeys"]
+
+# Default bloom filter file name
+BLOOM_FILENAME = "bloom.isbf"
 
 # Default shard size: 1GB
 DEFAULT_SHARD_SIZE = 1024 * 1024 * 1024
+
+
+class ShardedIndexedKeys:
+    """Lazy key iterator across all shards.
+
+    Provides memory-efficient access to keys without materializing them all at once.
+    Supports iteration, length, indexing, slicing, and numpy array conversion.
+
+    This is a live view - it reflects the current state of the index at iteration time.
+    """
+
+    def __init__(self, sharded_index: "ShardedIndex") -> None:
+        """Initialize with reference to sharded index.
+
+        :param sharded_index: The ShardedIndex to iterate keys from
+        """
+        self._index = sharded_index
+
+    def __len__(self) -> int:
+        """Return total number of keys across all shards."""
+        return len(self._index)
+
+    def __iter__(self):
+        """Yield keys from all shards lazily.
+
+        Iterates through view shards first, then active shard.
+        """
+        for idx in self._index._viewed_indexes:
+            yield from idx.keys
+        if self._index._active_shard is not None:
+            yield from self._index._active_shard.keys
+
+    def __getitem__(self, index: int | slice) -> int | NDArray[np.uint64]:
+        """Support indexing and slicing.
+
+        :param index: Integer index or slice
+        :return: Single key or array of keys
+        """
+        if isinstance(index, slice):
+            # Handle slicing by materializing the requested range
+            arr = np.fromiter(self, dtype=np.uint64, count=len(self))
+            return arr[index]
+        else:
+            # Handle single index
+            if index < 0:
+                index = len(self) + index
+            if index < 0 or index >= len(self):
+                raise IndexError("index out of range")
+
+            # Iterate through shards to find the key at the given index
+            current = 0
+            for idx in self._index._viewed_indexes:
+                shard_len = len(idx)
+                if current + shard_len > index:
+                    return idx.keys[index - current]
+                current += shard_len
+
+            if self._index._active_shard is not None:
+                return self._index._active_shard.keys[index - current]
+
+            raise IndexError("index out of range")  # pragma: no cover
+
+    def __array__(self, dtype: Any = None) -> NDArray[np.uint64]:
+        """Support numpy array conversion.
+
+        :param dtype: Optional dtype (defaults to uint64)
+        :return: Numpy array of all keys
+        """
+        result = np.fromiter(self, dtype=np.uint64, count=len(self))
+        if dtype is not None and dtype != np.uint64:
+            return result.astype(dtype)
+        return result
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return f"ShardedIndexedKeys(count={len(self)})"
 
 
 class ShardedIndex:
@@ -53,6 +133,7 @@ class ShardedIndex:
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
     :param view: Load existing shards in view mode only (read-only)
     :param enable_key_lookups: Enable key-based lookups (get, contains)
+    :param bloom_filter: Enable bloom filter for fast non-existent key rejection
     """
 
     def __init__(
@@ -69,11 +150,13 @@ class ShardedIndex:
         shard_size: int = DEFAULT_SHARD_SIZE,
         view: bool = False,
         enable_key_lookups: bool = True,
+        bloom_filter: bool = True,
     ) -> None:
         """Initialize a sharded index."""
         self._path = Path(path)
         self._shard_size = shard_size
         self._view_mode = view
+        self._use_bloom = bloom_filter
 
         # Initialize shard containers early (used by _discover_shards)
         self._view_shards: Indexes | None = None
@@ -81,6 +164,9 @@ class ShardedIndex:
         self._active_shard_path: Path | None = None
         self._viewed_indexes: list[Index] = []
         self._cached_shards: list[Path] | None = None
+
+        # Initialize bloom filter (loaded/created in load/view)
+        self._bloom: ScalableBloomFilter | None = None
 
         # Create directory if needed
         self._path.mkdir(parents=True, exist_ok=True)
@@ -109,8 +195,10 @@ class ShardedIndex:
             else:
                 self.load()
         elif not view:
-            # Create first active shard
+            # Create first active shard and bloom filter for new index
             self._active_shard = self._create_shard()
+            if self._use_bloom:
+                self._bloom = ScalableBloomFilter()
 
     # === Core Operations ===
 
@@ -143,6 +231,12 @@ class ShardedIndex:
 
         # Delegate to active shard
         result = self._active_shard.add(keys, vectors, copy=copy, threads=threads, log=log, progress=progress)
+
+        # Always update bloom filter if it exists (keeps it in sync regardless of _use_bloom)
+        # Note: usearch always returns keys as numpy array, even for single adds
+        if self._bloom is not None:
+            for key in np.atleast_1d(result):
+                self._bloom.add(int(key))
 
         # Check if rotation needed (after add completes)
         # Use stats.allocated_bytes as it better reflects actual disk size
@@ -245,6 +339,11 @@ class ShardedIndex:
 
     def _get_single(self, key: int, dtype: Any = None) -> NDArray[Any] | None:
         """Get a single vector by key from any shard."""
+        # Fast path: bloom filter says definitely not present
+        if self._use_bloom and self._bloom is not None:
+            if not self._bloom.contains(key):
+                return None
+
         # Check active shard first
         if self._active_shard is not None:
             if self._active_shard.contains(key):
@@ -266,6 +365,14 @@ class ShardedIndex:
 
         results: list[NDArray[Any] | None] = [None] * n
         found = np.zeros(n, dtype=bool)
+
+        # Fast path: use bloom filter to mark definitely-not-present keys as "found" (None)
+        if self._use_bloom and self._bloom is not None:
+            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            # Keys that bloom says definitely don't exist - mark as "done" (result stays None)
+            for i, maybe_present in enumerate(bloom_results):
+                if not maybe_present:
+                    found[i] = True  # Skip this key in shard search
 
         def process_shard(idx: Index) -> None:
             """Process a single shard, updating results for unfound keys."""
@@ -308,6 +415,7 @@ class ShardedIndex:
 
         When enable_key_lookups=True (default), checks all shards.
         When enable_key_lookups=False, returns False for all keys (matches usearch).
+        When bloom_filter=True (default), uses bloom filter to quickly reject non-existent keys.
 
         :param keys: Integer key(s) to check
         :return: Boolean or array of booleans
@@ -324,6 +432,11 @@ class ShardedIndex:
 
     def _contains_single(self, key: int) -> bool:
         """Check if a single key exists in any shard."""
+        # Fast path: bloom filter says definitely not present
+        if self._use_bloom and self._bloom is not None:
+            if not self._bloom.contains(key):
+                return False
+
         # Check active shard first (most likely location for recent keys)
         if self._active_shard is not None:
             if self._active_shard.contains(key):
@@ -344,17 +457,39 @@ class ShardedIndex:
 
         result = np.zeros(len(keys_arr), dtype=bool)
 
+        # Fast path: use bloom filter to identify definitely-not-present keys
+        if self._use_bloom and self._bloom is not None:
+            # Check which keys might exist (bloom says "maybe")
+            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            maybe_present = np.array(bloom_results, dtype=bool)
+
+            # If all keys are definitely not present, return early
+            if not maybe_present.any():
+                return result
+
+            # Only check shards for keys that might exist
+            keys_to_check = keys_arr[maybe_present]
+            indices_to_check = np.where(maybe_present)[0]
+        else:
+            keys_to_check = keys_arr
+            indices_to_check = np.arange(len(keys_arr))
+
+        partial_result = np.zeros(len(keys_to_check), dtype=bool)
+
         # Check active shard
         if self._active_shard is not None:
-            active_result = self._active_shard.contains(keys_arr)
-            result |= np.asarray(active_result, dtype=bool)
+            active_result = self._active_shard.contains(keys_to_check)
+            partial_result |= np.asarray(active_result, dtype=bool)
 
         # Check view shards
         for idx in self._viewed_indexes:
-            if result.all():
+            if partial_result.all():
                 break  # Short-circuit: all keys found
-            shard_result = idx.contains(keys_arr)
-            result |= np.asarray(shard_result, dtype=bool)
+            shard_result = idx.contains(keys_to_check)
+            partial_result |= np.asarray(shard_result, dtype=bool)
+
+        # Map partial results back to full result array
+        result[indices_to_check] = partial_result
 
         return result
 
@@ -416,11 +551,17 @@ class ShardedIndex:
         path_or_buffer: str | os.PathLike | None = None,
         progress: Callable[[int, int], bool] | None = None,
     ) -> None:
-        """Save active shard to disk.
+        """Save active shard and bloom filter to disk.
 
         :param path_or_buffer: Ignored (uses internal path management)
         :param progress: Progress callback
         """
+        # Save bloom filter if it exists and we're not in view (read-only) mode
+        if self._bloom is not None and not self._view_mode:
+            bloom_path = self._path / BLOOM_FILENAME
+            with timer("ShardedIndex save bloom filter"):
+                self._bloom.save(bloom_path)
+
         if self._active_shard is None or len(self._active_shard) == 0:
             return
 
@@ -430,6 +571,66 @@ class ShardedIndex:
         self._active_shard_path = shard_path
         # Invalidate cache since new shard file may have been created
         self._invalidate_shard_cache()
+
+    def rebuild_bloom(self, save: bool = True, log_progress: bool = True) -> int:
+        """Rebuild bloom filter from all existing keys.
+
+        Use this to populate the bloom filter for an existing index that was
+        created without bloom filter support, or to repair a corrupted filter.
+
+        Processes keys shard-by-shard in batches for efficiency.
+
+        :param save: Whether to save the bloom filter to disk after rebuilding
+        :param log_progress: Whether to log progress per shard
+        :return: Number of keys added to the bloom filter
+        :raises RuntimeError: If index is in view mode
+        """
+        from loguru import logger
+
+        if self._view_mode:
+            raise RuntimeError("Cannot rebuild bloom filter in view mode")
+
+        # Create fresh bloom filter
+        self._bloom = ScalableBloomFilter()
+        self._use_bloom = True
+
+        total = len(self)
+        if log_progress:
+            logger.info(f"Rebuilding bloom filter for {total:,} keys...")
+
+        # Process each shard's keys as a batch (much faster than one-by-one)
+        count = 0
+        all_shards = self._viewed_indexes + ([self._active_shard] if self._active_shard else [])
+        num_shards = len(all_shards)
+
+        for i, idx in enumerate(all_shards):
+            if idx is None or len(idx) == 0:  # pragma: no cover
+                continue
+
+            # Get all keys from this shard as numpy array
+            shard_keys = np.asarray(idx.keys, dtype=np.uint64)
+            shard_count = len(shard_keys)
+
+            # Add to bloom filter using proper batch operation (handles capacity/growth)
+            self._bloom.add_batch(shard_keys.tolist())
+            count += shard_count
+
+            if log_progress:
+                logger.info(
+                    f"  Shard {i + 1}/{num_shards}: +{shard_count:,} keys "
+                    f"(total: {count:,}, filters: {self._bloom.filter_count})"
+                )
+
+        if log_progress:
+            logger.info(f"Bloom filter rebuilt with {count:,} keys")
+
+        # Save if requested
+        if save:
+            bloom_path = self._path / BLOOM_FILENAME
+            with timer("ShardedIndex save bloom filter"):
+                self._bloom.save(bloom_path)
+
+        return count
 
     def load(
         self,
@@ -445,9 +646,16 @@ class ShardedIndex:
         self._invalidate_shard_cache()
         shard_files = self._discover_shards()
 
+        # Always load bloom filter if file exists to keep it in sync
+        # _use_bloom only controls whether to USE it for fast rejection in lookups
+        self._bloom = self._load_bloom_if_exists()
+
         if not shard_files:
             self._active_shard = self._create_shard()
             self._view_shards = None
+            # Create bloom filter for new empty index if enabled
+            if self._use_bloom and self._bloom is None:
+                self._bloom = ScalableBloomFilter()
             return
 
         with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}", log_start=True):
@@ -498,6 +706,16 @@ class ShardedIndex:
         self._view_mode = True
         self._invalidate_shard_cache()
         shard_files = self._discover_shards()
+
+        # Load bloom filter if exists (view mode - read only)
+        if self._use_bloom:
+            bloom_path = self._path / BLOOM_FILENAME
+            if bloom_path.exists():
+                with timer("ShardedIndex load bloom filter"):
+                    self._bloom = ScalableBloomFilter.load(bloom_path)
+            else:
+                # No bloom filter file - disable bloom filtering for this session
+                self._bloom = None
 
         if not shard_files:
             self._view_shards = None
@@ -747,9 +965,27 @@ class ShardedIndex:
         raise NotImplementedError("reset() not supported for ShardedIndex")
 
     @property
-    def keys(self) -> None:
-        """Not supported - would need to aggregate across shards."""
-        raise NotImplementedError("keys property not supported for ShardedIndex")
+    def keys(self) -> ShardedIndexedKeys:
+        """Lazy iterator over all keys across all shards.
+
+        Returns a ShardedIndexedKeys object that supports:
+        - Iteration: for key in idx.keys
+        - Length: len(idx.keys)
+        - Indexing: idx.keys[0], idx.keys[-1]
+        - Slicing: idx.keys[:10]
+        - Numpy conversion: np.asarray(idx.keys)
+
+        This is a live view - reflects current state at iteration time.
+
+        :raises RuntimeError: When enable_key_lookups=False (keys would be garbage)
+        :return: ShardedIndexedKeys iterator
+        """
+        if not self._config.get("enable_key_lookups", True):
+            raise RuntimeError(
+                "keys property unavailable when enable_key_lookups=False "
+                "(usearch does not store key mapping in this mode)"
+            )
+        return ShardedIndexedKeys(self)
 
     @property
     def vectors(self) -> None:
@@ -796,6 +1032,22 @@ class ShardedIndex:
     def _create_shard(self) -> Index:
         """Create a new shard. Override in subclasses for custom shard types."""
         return Index(**self._config)
+
+    def _load_bloom_if_exists(self) -> ScalableBloomFilter | None:
+        """Load bloom filter from disk if file exists, otherwise return None.
+
+        Always loads the bloom filter regardless of _use_bloom setting to keep it
+        in sync with index contents. The _use_bloom flag only controls whether
+        to USE the bloom filter for fast rejection in lookups.
+
+        Returns None when no bloom file exists. Call rebuild_bloom() to create
+        a bloom filter for existing indexes that don't have one.
+        """
+        bloom_path = self._path / BLOOM_FILENAME
+        if bloom_path.exists():
+            with timer("ShardedIndex load bloom filter"):
+                return ScalableBloomFilter.load(bloom_path)
+        return None
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
         """Restore a shard from disk. Override in subclasses for custom shard types.

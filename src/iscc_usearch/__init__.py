@@ -4,5 +4,6 @@ from iscc_usearch.utils import timer
 from iscc_usearch.nphd import NphdIndex
 from iscc_usearch.sharded import ShardedIndex
 from iscc_usearch.sharded_nphd import ShardedNphdIndex
+from iscc_usearch.bloom import ScalableBloomFilter
 
-__all__ = ["NphdIndex", "ShardedIndex", "ShardedNphdIndex", "timer"]
+__all__ = ["NphdIndex", "ShardedIndex", "ShardedNphdIndex", "ScalableBloomFilter", "timer"]

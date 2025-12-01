@@ -101,6 +101,21 @@ wheels = [
 ]
 
 [[package]]
+name = "fastbloom-rs"
+version = "0.5.10"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bf/a1/02f68de112876e230fa359bdc7f5c4d00457730f07df6937cb28038fc790/fastbloom_rs-0.5.10-cp37-abi3-macosx_10_12_x86_64.whl", hash = "sha256:723b7e96df0af56c9e0c57a3de8402db520d6379fac8588c2c31b0426e579791", size = 261296, upload-time = "2025-06-22T06:11:17.874Z" },
+    { url = "https://files.pythonhosted.org/packages/37/d6/adf8328ad7618217b45200987f5d09ec2c703848f5174673a4000afcb81a/fastbloom_rs-0.5.10-cp37-abi3-macosx_11_0_arm64.whl", hash = "sha256:a9026c4e1cf496f0c23bbfb782881b8a7afde2c81d7159ecc39fc4c5017223c9", size = 251517, upload-time = "2025-06-22T06:33:02.587Z" },
+    { url = "https://files.pythonhosted.org/packages/ff/af/aac0dd1f503dbdc8f9b9801b4b1aede04b31282b6351aa46029d52e639bd/fastbloom_rs-0.5.10-cp37-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:7568bc4c2be81f908a20ae467dfb47456535bf90036c93bb87a7a89949f6b4cf", size = 269421, upload-time = "2025-06-22T06:11:55.803Z" },
+    { url = "https://files.pythonhosted.org/packages/de/b7/dcd455ab8c1678f83415bdd8dbd9b62cca681390468075b78a480211ddbf/fastbloom_rs-0.5.10-cp37-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:fe695abd15e772f6323602fd2c1b52ddcb13e3f56d2ec766085149adcdd030d2", size = 283405, upload-time = "2025-06-22T06:11:43.991Z" },
+    { url = "https://files.pythonhosted.org/packages/b2/0b/eec1e563f14e379bec48719c2cb70a4849a2bdf04c39be0fb09d29f57066/fastbloom_rs-0.5.10-cp37-abi3-manylinux_2_17_ppc64.manylinux2014_ppc64.whl", hash = "sha256:8656de9a5589b9e3700eb576deaa2d4e6190386debf2dc79c598749bbc72c119", size = 418552, upload-time = "2025-06-22T06:11:53.698Z" },
+    { url = "https://files.pythonhosted.org/packages/c5/b1/dc24bb80680278458a227e70eff75ed2c0faec9a84c8bbbbb46fda1cd42a/fastbloom_rs-0.5.10-cp37-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:3737d3bfe98f2eb6009292a09f7329fa2f360f196d3e4bdafd595b97b9834610", size = 408093, upload-time = "2025-06-22T06:11:54.066Z" },
+    { url = "https://files.pythonhosted.org/packages/e0/98/1224a402f89cb89cd6a0918e55d68d5c1aff8f75e93d64d00990f600d2c6/fastbloom_rs-0.5.10-cp37-abi3-manylinux_2_34_x86_64.whl", hash = "sha256:1cd58d7eac2dceec8055583e719ceac6edceae80c3abcb53110391b76e4cff47", size = 282107, upload-time = "2025-06-22T07:02:39.041Z" },
+    { url = "https://files.pythonhosted.org/packages/c8/92/c949d09b1988321a40b915a8ef7cdd0b5dfba4d1510471239fccae8ecfbd/fastbloom_rs-0.5.10-cp37-abi3-win_amd64.whl", hash = "sha256:dc18c0ed6bd800dbd54617b51acbc977869975d5f87577cedec5fb6b653f24d6", size = 189908, upload-time = "2025-06-22T06:14:40.739Z" },
+]
+
+[[package]]
 name = "iniconfig"
 version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
@@ -114,6 +129,7 @@ name = "iscc-usearch"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "fastbloom-rs" },
     { name = "loguru" },
     { name = "numba" },
     { name = "usearch" },
@@ -132,6 +148,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "fastbloom-rs", specifier = ">=0.5.10" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numba", specifier = ">=0.62.1" },
     { name = "usearch", specifier = ">=2.21.0" },
