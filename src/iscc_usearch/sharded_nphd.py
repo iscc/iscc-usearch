@@ -100,8 +100,7 @@ class ShardedNphdIndexedVectors:
         lengths = {len(v) for v in vectors}
         if len(lengths) > 1:
             raise ValueError(
-                f"Cannot convert to array: vectors have different lengths {lengths}. "
-                "Use list(idx.vectors) instead."
+                f"Cannot convert to array: vectors have different lengths {lengths}. Use list(idx.vectors) instead."
             )
 
         result = np.vstack(vectors)

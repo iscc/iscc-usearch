@@ -263,8 +263,6 @@ def test_load_existing_empty_shards_with_bloom_enabled(tmp_path):
     assert index._bloom is not None
 
 
-
-
 def test_keys_iteration_with_no_active_shard(tmp_path):
     # type: () -> None
     """Test ShardedIndexedKeys iteration with active_shard = None."""
@@ -511,3 +509,26 @@ def test_contains_single_from_view_shard_after_checking_multiple_shards(tmp_path
     result = index2.contains(50)
 
     assert result is True
+
+
+def test_vectors_empty_slice_f32_dtype(tmp_path):
+    # type: () -> None
+    """Test empty slice returns correct shape for non-B1 dtype (F32)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, dtype="f32")
+    index.add(1, np.random.rand(64).astype(np.float32))
+
+    # Empty slice should have shape (0, 64) for F32
+    empty_slice = index.vectors[10:20]
+
+    assert empty_slice.shape == (0, 64)
+
+
+def test_vectors_empty_array_f32_dtype(tmp_path):
+    # type: () -> None
+    """Test empty array conversion returns correct shape for non-B1 dtype (F32)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, dtype="f32", bloom_filter=False)
+
+    # Empty index should have shape (0, 64) for F32
+    arr = np.asarray(index.vectors)
+
+    assert arr.shape == (0, 64)

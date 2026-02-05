@@ -247,7 +247,7 @@ def test_vectors_numpy_conversion_with_dtype(tmp_path):
 
 
 def test_vectors_numpy_conversion_empty(tmp_path):
-    """Empty vectors converts to empty array."""
+    """Empty vectors converts to empty array with correct shape."""
     idx = ShardedIndex(
         ndim=32,
         metric=MetricKind.Hamming,
@@ -261,6 +261,8 @@ def test_vectors_numpy_conversion_empty(tmp_path):
 
     assert isinstance(vectors_array, np.ndarray)
     assert len(vectors_array) == 0
+    # For B1 with ndim=32, vectors are 4 bytes (32 bits / 8)
+    assert vectors_array.shape == (0, 4)
 
 
 # Multi-shard tests
@@ -402,7 +404,7 @@ def test_vectors_repr(tmp_path):
 
 
 def test_vectors_slicing_empty_result(tmp_path):
-    """Slicing that results in empty returns empty array."""
+    """Slicing that results in empty returns empty array with correct shape."""
     idx = ShardedIndex(
         ndim=32,
         metric=MetricKind.Hamming,
@@ -418,6 +420,8 @@ def test_vectors_slicing_empty_result(tmp_path):
     empty_slice = vectors[10:20]
     assert isinstance(empty_slice, np.ndarray)
     assert len(empty_slice) == 0
+    # For B1 with ndim=32, vectors are 4 bytes (32 bits / 8)
+    assert empty_slice.shape == (0, 4)
 
 
 def test_vectors_indexing_in_viewed_shards(tmp_path):

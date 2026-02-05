@@ -119,5 +119,3 @@ def test_search_with_exact_flag(tmp_path):
 
     matches = index.search(vectors[0], count=5, exact=True)
     assert len(matches.keys) > 0
-
-

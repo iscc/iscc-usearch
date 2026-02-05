@@ -51,6 +51,21 @@ SCALAR_KIND_TO_NUMPY_DTYPE: dict[ScalarKind, np.dtype] = {
 }
 
 
+def _vector_width(ndim: int, dtype: ScalarKind) -> int:
+    """Compute the vector width (number of array elements) for a given ndim and dtype.
+
+    For ScalarKind.B1, ndim is the number of bits but vectors are stored as packed
+    uint8 bytes, so the width is ceil(ndim/8). For all other types, width equals ndim.
+
+    :param ndim: Number of dimensions (bits for B1, elements for others)
+    :param dtype: The scalar kind of the index
+    :return: Number of elements in the vector array
+    """
+    if dtype == ScalarKind.B1:
+        return (ndim + 7) // 8
+    return ndim
+
+
 class ShardedIndexedKeys:
     """Lazy key iterator across all shards.
 
@@ -171,8 +186,9 @@ class ShardedIndexedVectors:
             vectors = list(self)
             sliced = vectors[index]
             if not sliced:
-                dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
-                return np.empty((0, self._index.ndim), dtype=dtype)
+                npdtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
+                width = _vector_width(self._index.ndim, self._index.dtype)
+                return np.empty((0, width), dtype=npdtype)
             return np.vstack(sliced)
         else:
             # Handle single index
@@ -205,7 +221,8 @@ class ShardedIndexedVectors:
         vectors = list(self)
         if not vectors:
             default_dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
-            return np.empty((0, self._index.ndim), dtype=dtype or default_dtype)
+            width = _vector_width(self._index.ndim, self._index.dtype)
+            return np.empty((0, width), dtype=dtype or default_dtype)
         result = np.vstack(vectors)
         if dtype is not None and result.dtype != dtype:
             return result.astype(dtype)

@@ -1,7 +1,6 @@
 """Tests for ShardedIndex bloom filter integration."""
 
 import numpy as np
-import pytest
 from pathlib import Path
 from iscc_usearch import ShardedIndex
 
