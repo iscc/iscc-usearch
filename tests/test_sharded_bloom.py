@@ -154,47 +154,7 @@ def test_bloom_loaded_on_load(tmp_path: Path):
     assert not idx2.contains(9999)
 
 
-def test_bloom_loaded_on_view(tmp_path: Path):
-    """Test that bloom filter is loaded in view mode."""
-    # Create and save index with bloom filter
-    idx = ShardedIndex(ndim=32, path=tmp_path)
-    vectors = np.random.rand(100, 32).astype(np.float32)
-    keys = list(range(100))
-    idx.add(keys, vectors)
-    idx.save()
-
-    # Open in view mode
-    idx2 = ShardedIndex(ndim=32, path=tmp_path, view=True)
-
-    # Bloom filter should be loaded
-    assert idx2._bloom is not None
-
-    # Should work for lookups
-    assert idx2.contains(0)
-    assert not idx2.contains(9999)
-
-
-def test_bloom_missing_file_disables_bloom_in_view_mode(tmp_path: Path):
-    """Test that missing bloom file disables bloom in view mode."""
-    # Create and save index but delete bloom file
-    idx = ShardedIndex(ndim=32, path=tmp_path)
-    vectors = np.random.rand(10, 32).astype(np.float32)
-    idx.add(None, vectors)
-    idx.save()
-
-    # Delete bloom file
-    bloom_path = tmp_path / "bloom.isbf"
-    bloom_path.unlink()
-
-    # Open in view mode - should work without bloom
-    idx2 = ShardedIndex(ndim=32, path=tmp_path, view=True)
-    assert idx2._bloom is None  # Bloom disabled
-
-    # Lookups should still work (just slower)
-    assert len(idx2) == 10
-
-
-def test_bloom_missing_file_disables_bloom_in_load_mode(tmp_path: Path):
+def test_bloom_missing_file_disables_bloom(tmp_path: Path):
     """Test that missing bloom file disables bloom in load mode (legacy index).
 
     This tests the regression where loading a legacy index without a bloom.isbf
@@ -430,22 +390,6 @@ def test_rebuild_bloom_across_multiple_shards(tmp_path: Path):
         assert idx._bloom.contains(i)
 
 
-def test_rebuild_bloom_fails_in_view_mode(tmp_path: Path):
-    """Test that rebuild_bloom raises error in view mode."""
-    # Create and save index
-    idx = ShardedIndex(ndim=32, path=tmp_path)
-    vectors = np.random.rand(10, 32).astype(np.float32)
-    idx.add(None, vectors)
-    idx.save()
-
-    # Open in view mode
-    idx2 = ShardedIndex(ndim=32, path=tmp_path, view=True)
-
-    # Should fail
-    with pytest.raises(RuntimeError, match="view mode"):
-        idx2.rebuild_bloom(log_progress=False)
-
-
 def test_rebuild_bloom_empty_index(tmp_path: Path):
     """Test rebuild_bloom on empty index."""
     idx = ShardedIndex(ndim=32, path=tmp_path, bloom_filter=False)
@@ -536,48 +480,6 @@ def test_rebuild_bloom_skips_empty_shards(tmp_path: Path):
     assert idx._bloom is not None
     for i in range(50):
         assert idx._bloom.contains(i)
-
-
-def test_bloom_created_on_load_empty_dir(tmp_path: Path):
-    """Test that bloom filter is created when load() is called on empty dir.
-
-    Covers TRUE branch: load() -> no shard_files -> _use_bloom=True, _bloom=None
-    """
-    # Create empty dir
-    empty_dir = tmp_path / "empty_test"
-    empty_dir.mkdir()
-
-    # Create index with bloom enabled pointing to empty dir
-    idx = ShardedIndex(ndim=32, path=empty_dir, bloom_filter=True)
-    assert idx._bloom is not None
-
-    # Set bloom to None and call load() - should recreate bloom
-    idx._bloom = None
-    idx.load()
-
-    # The load() branch should create bloom since _use_bloom=True and _bloom=None
-    assert idx._bloom is not None
-    assert idx._bloom.count == 0
-
-
-def test_bloom_not_created_on_load_when_disabled(tmp_path: Path):
-    """Test that bloom filter is NOT created when load() is called with bloom disabled.
-
-    Covers FALSE branch: load() -> no shard_files -> _use_bloom=False
-    """
-    # Create empty dir
-    empty_dir = tmp_path / "empty_test"
-    empty_dir.mkdir()
-
-    # Create index with bloom DISABLED pointing to empty dir
-    idx = ShardedIndex(ndim=32, path=empty_dir, bloom_filter=False)
-    assert idx._bloom is None
-
-    # Call load() - should NOT create bloom since _use_bloom=False
-    idx.load()
-
-    # Bloom should still be None
-    assert idx._bloom is None
 
 
 def test_bloom_stays_consistent_when_toggled(tmp_path: Path):

@@ -5,7 +5,6 @@ Confirms expected behavior for checking key membership:
 - Single key contains check
 - Multiple keys contains check
 - 'in' operator support
-- Handling no active shard
 """
 
 import numpy as np
@@ -32,22 +31,6 @@ def test_contains_multiple_keys(tmp_path):
     assert result[0]
     assert result[1]
     assert not result[2]
-
-
-def test_contains_no_active_shard_single(tmp_path):
-    """Test contains returns False when no active shard (single key)."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.contains(42) is False
-
-
-def test_contains_no_active_shard_multiple(tmp_path):
-    """Test contains returns array of False when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    result = index.contains([1, 2, 3])
-
-    assert not np.any(result)
 
 
 def test_in_operator(tmp_path):
@@ -93,22 +76,6 @@ def test_contains_across_shards_batch(tmp_path):
     assert result[1]  # key 2
     assert result[2]  # key 3
     assert not result[3]  # key 999 doesn't exist
-
-
-def test_contains_view_mode_across_shards(tmp_path):
-    """Test contains works in view mode across shards."""
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
-    index.add(1, np.random.rand(64).astype(np.float32))
-    index.add(2, np.random.rand(64).astype(np.float32))
-    index.save()
-
-    # Open in view mode (read-only)
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    assert index2._active_shard is None
-
-    assert index2.contains(1) is True
-    assert index2.contains(2) is True
-    assert index2.contains(999) is False
 
 
 def test_contains_enable_key_lookups_false(tmp_path):

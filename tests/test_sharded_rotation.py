@@ -45,9 +45,9 @@ def test_shard_rotation_preserves_data(tmp_path):
 
 def test_rotate_shard_guard_clause(tmp_path):
     """Test that _rotate_shard does nothing when active_shard is None."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
+    index = ShardedIndex(ndim=64, path=tmp_path)
 
-    # Force active shard to None
+    # Force active shard to None (simulates edge case)
     index._active_shard = None
 
     # This should return early without error

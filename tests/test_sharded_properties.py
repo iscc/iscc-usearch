@@ -45,26 +45,12 @@ def test_ndim_property(tmp_path):
     assert index.ndim == 128
 
 
-def test_ndim_from_config_no_shard(tmp_path):
-    """Test ndim returns config value when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.ndim == 64
-
-
 def test_dtype_property(tmp_path):
     """Test dtype property."""
     index = ShardedIndex(ndim=64, dtype="f32", path=tmp_path)
 
     # dtype is set by index, not always same as input string
     assert index.dtype is not None
-
-
-def test_dtype_from_config(tmp_path):
-    """Test dtype returns config value when no active shard."""
-    index = ShardedIndex(ndim=64, dtype="f32", path=tmp_path, view=True)
-
-    assert index.dtype == "f32"
 
 
 def test_metric_property(tmp_path):
@@ -74,13 +60,6 @@ def test_metric_property(tmp_path):
     assert index.metric == MetricKind.L2sq
 
 
-def test_metric_from_config(tmp_path):
-    """Test metric returns config value when no active shard."""
-    index = ShardedIndex(ndim=64, metric=MetricKind.IP, path=tmp_path, view=True)
-
-    assert index.metric == MetricKind.IP
-
-
 def test_metric_kind_property(tmp_path):
     """Test metric_kind property."""
     index = ShardedIndex(ndim=64, metric=MetricKind.L2sq, path=tmp_path)
@@ -88,25 +67,11 @@ def test_metric_kind_property(tmp_path):
     assert index.metric_kind == MetricKind.L2sq
 
 
-def test_metric_kind_from_config(tmp_path):
-    """Test metric_kind returns config value when no active shard."""
-    index = ShardedIndex(ndim=64, metric=MetricKind.IP, path=tmp_path, view=True)
-
-    assert index.metric_kind == MetricKind.IP
-
-
 def test_connectivity_property(tmp_path):
     """Test connectivity property."""
     index = ShardedIndex(ndim=64, connectivity=32, path=tmp_path)
 
     assert index.connectivity == 32
-
-
-def test_connectivity_from_config(tmp_path):
-    """Test connectivity returns config default when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.connectivity == 16  # default
 
 
 def test_expansion_add_property(tmp_path):
@@ -124,14 +89,6 @@ def test_expansion_add_setter(tmp_path):
     assert index.expansion_add == 512
 
 
-def test_expansion_add_setter_no_shard(tmp_path):
-    """Test expansion_add setter with no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    index.expansion_add = 512
-
-    assert index._config["expansion_add"] == 512
-
-
 def test_expansion_search_property(tmp_path):
     """Test expansion_search property."""
     index = ShardedIndex(ndim=64, expansion_search=256, path=tmp_path)
@@ -147,24 +104,9 @@ def test_expansion_search_setter(tmp_path):
     assert index.expansion_search == 512
 
 
-def test_expansion_search_setter_no_shard(tmp_path):
-    """Test expansion_search setter with no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    index.expansion_search = 512
-
-    assert index._config["expansion_search"] == 512
-
-
 def test_multi_property(tmp_path):
     """Test multi property."""
     index = ShardedIndex(ndim=64, multi=True, path=tmp_path)
-
-    assert index.multi is True
-
-
-def test_multi_from_config(tmp_path):
-    """Test multi returns config value when no active shard."""
-    index = ShardedIndex(ndim=64, multi=True, path=tmp_path, view=True)
 
     assert index.multi is True
 
@@ -193,13 +135,6 @@ def test_memory_usage_property(tmp_path):
     assert index.memory_usage > 0
 
 
-def test_memory_usage_no_shard(tmp_path):
-    """Test memory_usage returns 0 when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.memory_usage == 0
-
-
 def test_memory_usage_includes_view_shards(tmp_path):
     """Test memory_usage includes viewed indexes."""
     # Create index and trigger rotation to get view shards
@@ -225,60 +160,12 @@ def test_serialized_length_property(tmp_path):
     assert index.serialized_length > 0
 
 
-def test_serialized_length_no_shard(tmp_path):
-    """Test serialized_length returns 0 when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.serialized_length == 0
-
-
 def test_capacity_property(tmp_path):
     """Test capacity property."""
     index = ShardedIndex(ndim=64, path=tmp_path)
     index.add(1, np.random.rand(64).astype(np.float32))
 
     assert index.capacity > 0
-
-
-def test_capacity_no_shard(tmp_path):
-    """Test capacity returns 0 when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.capacity == 0
-
-
-def test_expansion_from_config_defaults(tmp_path):
-    """Test expansion properties return defaults from config."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    # Should return defaults
-    assert index.expansion_add == 128
-    assert index.expansion_search == 64
-
-
-def test_expansion_add_from_config_none(tmp_path):
-    """Test expansion_add returns default when config value is None."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    # Config has None for expansion_add, should return default
-    index._config["expansion_add"] = None
-
-    assert index.expansion_add == 128  # default
-
-
-def test_metric_kind_with_mock_compiled_metric(tmp_path):
-    """Test metric_kind property with a metric object that has .kind attribute."""
-
-    # Create a mock object that has .kind like CompiledMetric
-    class MockCompiledMetric:
-        def __init__(self):
-            self.kind = MetricKind.L2sq
-
-    # Create index and manually set config to have mock metric
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    index._config["metric"] = MockCompiledMetric()
-
-    # metric_kind should return the .kind attribute
-    assert index.metric_kind == MetricKind.L2sq
 
 
 def test_repr(tmp_path):

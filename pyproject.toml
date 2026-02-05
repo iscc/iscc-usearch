@@ -41,6 +41,10 @@ skips = ["B101"]  # Allow assert statements for parameter validation
 [tool.pytest.ini_options]
 addopts = "--cov=iscc_usearch --cov-report=term-missing --cov-fail-under=100"
 testpaths = ["tests"]
+filterwarnings = [
+    # usearch IndexedKeys.__array__ doesn't support numpy 2.0 copy keyword yet
+    "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning",
+]
 
 [tool.coverage.run]
 source = ["src/iscc_usearch"]

@@ -287,8 +287,8 @@ def test_keys_after_save_and_load(tmp_path):
     assert set(keys_list) == {1, 2, 5}
 
 
-def test_keys_after_view(tmp_path):
-    """Keys work in view mode."""
+def test_keys_after_reload(tmp_path):
+    """Keys work after reloading saved index."""
     idx = ShardedIndex(
         ndim=32,
         metric=MetricKind.Hamming,
@@ -300,13 +300,12 @@ def test_keys_after_view(tmp_path):
     idx.add(2, np.array([100, 150, 200, 250], dtype=np.uint8))
     idx.save()
 
-    # View in new instance
+    # Reload in new instance
     idx2 = ShardedIndex(
         ndim=32,
         metric=MetricKind.Hamming,
         dtype=ScalarKind.B1,
         path=tmp_path / "index",
-        view=True,
         bloom_filter=False,
     )
 

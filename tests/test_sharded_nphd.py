@@ -104,9 +104,8 @@ def test_save_and_load(tmp_path):
     # Save
     idx.save()
 
-    # Create new index and load
+    # Create new index and reload
     loaded = ShardedNphdIndex(max_dim=256, path=path)
-    loaded.load()
 
     assert len(loaded) == 2
     assert loaded.max_dim == 256
@@ -121,95 +120,6 @@ def test_save_and_load(tmp_path):
     )
 
 
-def test_view_mode(tmp_path):
-    """View mode opens index read-only with NPHD metric."""
-    path = tmp_path / "shards"
-    idx = ShardedNphdIndex(max_dim=256, path=path)
-
-    v1 = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.uint8)
-    v2 = np.array([1, 2, 3, 4, 5, 6, 7, 9], dtype=np.uint8)
-    idx.add([100, 200], [v1, v2])
-
-    distances_before = idx.search(v1, count=2).distances.copy()
-    idx.save()
-
-    # View mode
-    viewed = ShardedNphdIndex(max_dim=256, path=path, view=True)
-
-    assert len(viewed) == 2
-
-    # Verify NPHD metric preserved
-    distances_after = viewed.search(v1, count=2).distances
-    np.testing.assert_array_almost_equal(
-        distances_before,
-        distances_after,
-        decimal=6,
-    )
-
-    # View mode should reject writes
-    with pytest.raises(RuntimeError):
-        viewed.add(300, np.array([1, 2, 3, 4], dtype=np.uint8))
-
-
-def test_restore_from_path(tmp_path):
-    """Restore index from directory path."""
-    path = tmp_path / "shards"
-    idx = ShardedNphdIndex(max_dim=128, path=path)
-
-    vector = np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.uint8)
-    idx.add(42, vector)
-    idx.save()
-
-    # Restore using static method
-    restored = ShardedNphdIndex.restore(path)
-
-    assert restored is not None
-    assert len(restored) == 1
-    assert restored.max_dim == 128
-    assert 42 in restored
-
-
-def test_restore_nonexistent_path_returns_none(tmp_path):
-    """Restore from non-existent path returns None."""
-    result = ShardedNphdIndex.restore(tmp_path / "nonexistent")
-    assert result is None
-
-
-def test_restore_empty_dir_returns_none(tmp_path):
-    """Restore from empty directory returns None."""
-    empty_dir = tmp_path / "empty"
-    empty_dir.mkdir()
-
-    result = ShardedNphdIndex.restore(empty_dir)
-    assert result is None
-
-
-def test_restore_file_not_dir_returns_none(tmp_path):
-    """Restore from file (not directory) returns None."""
-    file_path = tmp_path / "not_a_dir.txt"
-    file_path.write_text("test")
-
-    result = ShardedNphdIndex.restore(file_path)
-    assert result is None
-
-
-def test_restore_view_mode(tmp_path):
-    """Restore in view mode."""
-    path = tmp_path / "shards"
-    idx = ShardedNphdIndex(max_dim=256, path=path)
-    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
-    idx.save()
-
-    restored = ShardedNphdIndex.restore(path, view=True)
-
-    assert restored is not None
-    assert len(restored) == 1
-
-    # View mode should reject writes
-    with pytest.raises(RuntimeError):
-        restored.add(2, np.array([5, 6, 7, 8], dtype=np.uint8))
-
-
 def test_repr(tmp_path):
     """String representation includes key info."""
     idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
@@ -222,26 +132,16 @@ def test_repr(tmp_path):
     assert "max_dim=256" in repr_str
 
 
-def test_get_on_view_only_index(tmp_path):
-    """Get on view-only index retrieves vectors from view shards."""
+def test_get_single_key(tmp_path):
+    """Get retrieves single vector by key."""
     path = tmp_path / "shards"
     v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
     idx = ShardedNphdIndex(max_dim=256, path=path)
     idx.add(1, v1)
-    idx.save()
 
-    # Open in view mode - no active shard
-    viewed = ShardedNphdIndex(max_dim=256, path=path, view=True)
-    assert viewed._active_shard is None
+    result = idx.get(1)
 
-    # get() on view-only should retrieve vectors from view shards
-    result_single = viewed.get(1)
-    result_multi = viewed.get([1, 999])
-
-    np.testing.assert_array_equal(result_single, v1)
-    assert len(result_multi) == 2
-    np.testing.assert_array_equal(result_multi[0], v1)
-    assert result_multi[1] is None
+    np.testing.assert_array_equal(result, v1)
 
 
 def test_get_multiple_keys_with_none_results(tmp_path):
@@ -270,38 +170,6 @@ def test_properties(tmp_path):
     assert len(idx) == 1
 
 
-def test_load_syncs_max_dim(tmp_path):
-    """Load correctly syncs max_dim from saved shard."""
-    path = tmp_path / "shards"
-
-    # Create with max_dim=192
-    idx = ShardedNphdIndex(max_dim=192, path=path)
-    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
-    idx.save()
-
-    # Create with different max_dim and load
-    loaded = ShardedNphdIndex(max_dim=64, path=path)
-    loaded.load()
-
-    # max_dim should be synced from loaded shard
-    assert loaded.max_dim == 192
-    assert loaded.max_bytes == 24
-
-
-def test_load_empty_directory(tmp_path):
-    """Load from empty directory (no shards) keeps initial max_dim."""
-    path = tmp_path / "empty_shards"
-    path.mkdir()
-
-    # Create index with specific max_dim and load from empty dir
-    idx = ShardedNphdIndex(max_dim=128, path=path)
-    idx.load()  # Should not raise, active_shard will be None or new
-
-    # max_dim should remain as initialized
-    assert idx.max_dim == 128
-    assert idx.max_bytes == 16
-
-
 def test_init_without_max_dim_raises_when_no_shards(tmp_path):
     """Test that init without max_dim raises error when no existing shards."""
     with pytest.raises(ValueError, match="max_dim is required"):
@@ -326,20 +194,144 @@ def test_init_without_max_dim_autodetects_from_existing_shards(tmp_path):
     assert len(idx2) == 1
 
 
-def test_init_without_max_dim_view_mode_autodetects(tmp_path):
-    """Test that init without max_dim auto-detects in view mode."""
+def test_get_across_shards(tmp_path):
+    """Get retrieves vectors from view shards after reload."""
     path = tmp_path / "shards"
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
+    idx = ShardedNphdIndex(max_dim=256, path=path)
+    idx.add(1, v1)
+    idx.save()
 
-    # Create and save an index
-    idx1 = ShardedNphdIndex(max_dim=128, path=path)
-    v1 = np.array([1, 2, 3], dtype=np.uint8)
-    idx1.add(1, v1)
-    idx1.save()
+    # Reload index - data is now in view shards
+    idx2 = ShardedNphdIndex(max_dim=256, path=path)
 
-    # Reopen in view mode without max_dim
-    idx2 = ShardedNphdIndex(path=path, view=True)
+    # get() should retrieve vectors from view shards
+    result_single = idx2.get(1)
+    result_multi = idx2.get([1, 999])
 
-    assert idx2.max_dim == 128
-    assert idx2.max_bytes == 16
-    assert len(idx2) == 1
-    assert idx2._view_mode is True
+    np.testing.assert_array_equal(result_single, v1)
+    assert len(result_multi) == 2
+    np.testing.assert_array_equal(result_multi[0], v1)
+    assert result_multi[1] is None
+
+
+# Tests for ShardedNphdIndex.vectors property
+
+
+def test_vectors_returns_unpadded_vectors(tmp_path):
+    """Vectors property returns unpadded variable-length vectors."""
+    from iscc_usearch.sharded_nphd import ShardedNphdIndexedVectors
+
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)  # 4 bytes
+    v2 = np.array([10, 20], dtype=np.uint8)  # 2 bytes
+    v3 = np.array([100, 101, 102, 103, 104, 105], dtype=np.uint8)  # 6 bytes
+    idx.add(1, v1)
+    idx.add(2, v2)
+    idx.add(3, v3)
+
+    vectors = idx.vectors
+
+    assert isinstance(vectors, ShardedNphdIndexedVectors)
+    assert len(vectors) == 3
+
+    vectors_list = list(vectors)
+    # Check each vector is unpadded (original length)
+    lengths = sorted([len(v) for v in vectors_list])
+    assert lengths == [2, 4, 6]
+
+
+def test_vectors_iteration_returns_original_vectors(tmp_path):
+    """Vectors iteration returns original unpadded vectors."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
+    v2 = np.array([10, 20], dtype=np.uint8)
+    idx.add(1, v1)
+    idx.add(2, v2)
+
+    vectors_list = list(idx.vectors)
+
+    # Should find both original vectors
+    found_v1 = any(np.array_equal(v, v1) for v in vectors_list)
+    found_v2 = any(np.array_equal(v, v2) for v in vectors_list)
+    assert found_v1
+    assert found_v2
+
+
+def test_vectors_indexing_returns_unpadded(tmp_path):
+    """Vectors indexing returns unpadded vectors."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
+    idx.add(1, v1)
+
+    vec = idx.vectors[0]
+
+    assert len(vec) == 4
+    np.testing.assert_array_equal(vec, v1)
+
+
+def test_vectors_slicing_returns_list(tmp_path):
+    """Vectors slicing returns list of unpadded vectors."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    for i in range(5):
+        idx.add(i, np.array([i, i + 1, i + 2], dtype=np.uint8))
+
+    sliced = idx.vectors[:3]
+
+    assert isinstance(sliced, list)
+    assert len(sliced) == 3
+    for v in sliced:
+        assert len(v) == 3  # All vectors have same length
+
+
+def test_vectors_numpy_conversion_uniform_length(tmp_path):
+    """Vectors converts to numpy array when all vectors have same length."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    for i in range(5):
+        idx.add(i, np.array([i, i + 1, i + 2, i + 3], dtype=np.uint8))
+
+    vectors_array = np.asarray(idx.vectors)
+
+    assert isinstance(vectors_array, np.ndarray)
+    assert vectors_array.shape == (5, 4)
+
+
+def test_vectors_numpy_conversion_variable_length_raises(tmp_path):
+    """Vectors numpy conversion raises when vectors have different lengths."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))  # 4 bytes
+    idx.add(2, np.array([10, 20], dtype=np.uint8))  # 2 bytes
+
+    with pytest.raises(ValueError, match="different lengths"):
+        np.asarray(idx.vectors)
+
+
+def test_vectors_consistent_with_get(tmp_path):
+    """Vectors returns same data as get() for each key."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    v1 = np.array([1, 2, 3, 4], dtype=np.uint8)
+    v2 = np.array([10, 20, 30], dtype=np.uint8)
+    idx.add(100, v1)
+    idx.add(200, v2)
+
+    # Get vectors from both APIs
+    vec_from_get_1 = idx.get(100)
+    vec_from_get_2 = idx.get(200)
+
+    vectors_list = list(idx.vectors)
+
+    # Each vector from vectors should match one from get
+    assert any(np.array_equal(v, vec_from_get_1) for v in vectors_list)
+    assert any(np.array_equal(v, vec_from_get_2) for v in vectors_list)
+
+
+def test_vectors_repr(tmp_path):
+    """Vectors has useful repr."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
+    idx.add(2, np.array([10, 20], dtype=np.uint8))
+
+    repr_str = repr(idx.vectors)
+
+    assert "ShardedNphdIndexedVectors" in repr_str
+    assert "count=2" in repr_str

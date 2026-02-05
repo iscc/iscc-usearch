@@ -14,7 +14,104 @@ from iscc_usearch.metrics import create_nphd_metric
 from iscc_usearch.nphd import pad_vectors, unpad_vectors
 from iscc_usearch.sharded import ShardedIndex
 
-__all__ = ["ShardedNphdIndex"]
+__all__ = ["ShardedNphdIndex", "ShardedNphdIndexedVectors"]
+
+
+class ShardedNphdIndexedVectors:
+    """Lazy vector iterator across all shards returning unpadded vectors.
+
+    Provides memory-efficient access to vectors without materializing them all at once.
+    Supports iteration, length, indexing, slicing, and numpy array conversion.
+
+    This is a live view - it reflects the current state of the index at iteration time.
+    Vectors are returned unpadded (variable-length), consistent with the get() API.
+    """
+
+    def __init__(self, sharded_index: "ShardedNphdIndex") -> None:
+        """Initialize with reference to sharded NPHD index.
+
+        :param sharded_index: The ShardedNphdIndex to iterate vectors from
+        """
+        self._index = sharded_index
+
+    def __len__(self) -> int:
+        """Return total number of vectors across all shards."""
+        return len(self._index)
+
+    def __iter__(self):
+        """Yield unpadded vectors from all shards lazily.
+
+        Iterates through view shards first, then active shard.
+        """
+        for idx in self._index._viewed_indexes:
+            for vec in idx.vectors:
+                yield unpad_vectors(vec.reshape(1, -1))[0]
+        if self._index._active_shard is not None:
+            for vec in self._index._active_shard.vectors:
+                yield unpad_vectors(vec.reshape(1, -1))[0]
+
+    def __getitem__(self, index: int | slice) -> NDArray[np.uint8] | list[NDArray[np.uint8]]:
+        """Support indexing and slicing.
+
+        :param index: Integer index or slice
+        :return: Single unpadded vector or list of unpadded vectors
+        """
+        if isinstance(index, slice):
+            # Handle slicing by materializing the requested range
+            vectors = list(self)
+            return vectors[index]
+        else:
+            # Handle single index
+            if index < 0:
+                index = len(self) + index
+            if index < 0 or index >= len(self):
+                raise IndexError("index out of range")
+
+            # Iterate through shards to find the vector at the given index
+            current = 0
+            for idx in self._index._viewed_indexes:
+                shard_len = len(idx)
+                if current + shard_len > index:
+                    vec = idx.vectors[index - current]
+                    return unpad_vectors(vec.reshape(1, -1))[0]
+                current += shard_len
+
+            if self._index._active_shard is not None:
+                vec = self._index._active_shard.vectors[index - current]
+                return unpad_vectors(vec.reshape(1, -1))[0]
+
+            raise IndexError("index out of range")  # pragma: no cover
+
+    def __array__(self, dtype: np.typing.DTypeLike = None) -> NDArray[np.uint8]:
+        """Support numpy array conversion for uniform-length vectors only.
+
+        Warning: This materializes all vectors into memory and requires
+        all vectors to have the same length.
+
+        :param dtype: Optional dtype for the result array
+        :return: 2D numpy array of all unpadded vectors
+        :raises ValueError: If vectors have different lengths
+        """
+        vectors = list(self)
+        if not vectors:
+            return np.array([], dtype=dtype or np.uint8)
+
+        # Check if all vectors have the same length
+        lengths = {len(v) for v in vectors}
+        if len(lengths) > 1:
+            raise ValueError(
+                f"Cannot convert to array: vectors have different lengths {lengths}. "
+                "Use list(idx.vectors) instead."
+            )
+
+        result = np.vstack(vectors)
+        if dtype is not None and result.dtype != dtype:
+            return result.astype(dtype)
+        return result
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return f"ShardedNphdIndexedVectors(count={len(self)})"
 
 
 class ShardedNphdIndex(ShardedIndex):
@@ -29,7 +126,6 @@ class ShardedNphdIndex(ShardedIndex):
     :param max_dim: Maximum bits per vector (auto-detected from existing shards if omitted)
     :param path: Directory path for shard storage (required)
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
-    :param view: Load existing shards in view mode only (read-only)
     :param connectivity: HNSW connectivity parameter (M)
     :param expansion_add: Search depth on insertions (efConstruction)
     :param expansion_search: Search depth on queries (ef)
@@ -254,66 +350,32 @@ class ShardedNphdIndex(ShardedIndex):
         # Unpad found vectors, preserve None for missing keys
         return [unpad_vectors(r.reshape(1, -1))[0] if r is not None else None for r in results]
 
-    def load(
-        self,
-        path_or_buffer: str | os.PathLike | None = None,
-        progress: Callable[[int, int], bool] | None = None,
-    ) -> None:
-        """Load shards from directory and sync max_dim from loaded shard.
-
-        :param path_or_buffer: Ignored (uses internal path management)
-        :param progress: Progress callback
-        """
-        super().load(path_or_buffer, progress)
-        # ShardedIndex.load() always creates active_shard if none exists
+    def _load_existing(self) -> None:
+        """Load existing shards and sync max_dim from loaded shard."""
+        super()._load_existing()
+        # Parent always creates active_shard if none exists
         if self._active_shard is not None:  # pragma: no branch
             # Compute max_dim from shard's ndim (ndim = max_dim + 8 for length byte)
             self._max_dim = self._active_shard.ndim - 8
             self._max_bytes = self._max_dim // 8
 
-    def view(
-        self,
-        path_or_buffer: str | os.PathLike | None = None,
-        progress: Callable[[int, int], bool] | None = None,
-    ) -> None:
-        """View shards from directory (read-only) and sync max_dim.
+    @property
+    def vectors(self) -> ShardedNphdIndexedVectors:
+        """Lazy iterator over all unpadded vectors across all shards.
 
-        :param path_or_buffer: Ignored (uses internal path management)
-        :param progress: Progress callback
+        Returns a ShardedNphdIndexedVectors object that supports:
+        - Iteration: for vec in idx.vectors
+        - Length: len(idx.vectors)
+        - Indexing: idx.vectors[0], idx.vectors[-1]
+        - Slicing: idx.vectors[:10]
+        - Numpy conversion: np.asarray(idx.vectors) (requires uniform vector lengths)
+
+        Vectors are returned unpadded (variable-length), consistent with the get() API.
+        This is a live view - reflects current state at iteration time.
+
+        :return: ShardedNphdIndexedVectors iterator
         """
-        super().view(path_or_buffer, progress)
-        # max_dim is already set from restore() or constructor
-
-    @staticmethod
-    def restore(
-        path: str | os.PathLike,
-        view: bool = False,
-        **kwargs: Any,
-    ) -> ShardedNphdIndex | None:
-        """Restore a ShardedNphdIndex from a directory.
-
-        :param path: Directory containing shard files
-        :param view: Open in view mode (read-only)
-        :param kwargs: Additional arguments passed to constructor
-        :return: Restored ShardedNphdIndex or None if invalid
-        """
-        path = Path(path)
-        if not path.exists() or not path.is_dir():
-            return None
-
-        shard_files = sorted(
-            path.glob("shard_*.usearch"),
-            key=lambda p: int(p.stem.split("_")[1]),
-        )
-        if not shard_files:
-            return None
-
-        meta = Index.metadata(str(shard_files[0]))
-        if not meta:  # pragma: no cover - Index.metadata raises on invalid files
-            return None
-
-        max_dim = meta["dimensions"] - 8  # Subtract length signal byte
-        return ShardedNphdIndex(max_dim=max_dim, path=path, view=view, **kwargs)
+        return ShardedNphdIndexedVectors(self)
 
     def __repr__(self) -> str:
         """Return string representation of the sharded NPHD index."""

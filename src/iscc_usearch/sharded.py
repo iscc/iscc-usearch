@@ -26,13 +26,29 @@ from usearch.index import (
 from iscc_usearch.bloom import ScalableBloomFilter
 from iscc_usearch.utils import timer
 
-__all__ = ["ShardedIndex", "ShardedIndexedKeys"]
+__all__ = ["ShardedIndex", "ShardedIndexedKeys", "ShardedIndexedVectors"]
 
 # Default bloom filter file name
 BLOOM_FILENAME = "bloom.isbf"
 
 # Default shard size: 1GB
 DEFAULT_SHARD_SIZE = 1024 * 1024 * 1024
+
+# Mapping from ScalarKind to numpy dtype
+SCALAR_KIND_TO_NUMPY_DTYPE: dict[ScalarKind, np.dtype] = {
+    ScalarKind.B1: np.dtype(np.uint8),
+    ScalarKind.F16: np.dtype(np.float16),
+    ScalarKind.F32: np.dtype(np.float32),
+    ScalarKind.F64: np.dtype(np.float64),
+    ScalarKind.I8: np.dtype(np.int8),
+    ScalarKind.I16: np.dtype(np.int16),
+    ScalarKind.I32: np.dtype(np.int32),
+    ScalarKind.I64: np.dtype(np.int64),
+    ScalarKind.U8: np.dtype(np.uint8),
+    ScalarKind.U16: np.dtype(np.uint16),
+    ScalarKind.U32: np.dtype(np.uint32),
+    ScalarKind.U64: np.dtype(np.uint64),
+}
 
 
 class ShardedIndexedKeys:
@@ -111,6 +127,95 @@ class ShardedIndexedKeys:
         return f"ShardedIndexedKeys(count={len(self)})"
 
 
+class ShardedIndexedVectors:
+    """Lazy vector iterator across all shards.
+
+    Provides memory-efficient access to vectors without materializing them all at once.
+    Supports iteration, length, indexing, slicing, and numpy array conversion.
+
+    This is a live view - it reflects the current state of the index at iteration time.
+
+    Note: Unlike usearch Index.vectors which returns an np.ndarray immediately,
+    this returns a lazy iterator appropriate for larger-than-RAM indexes.
+    """
+
+    def __init__(self, sharded_index: "ShardedIndex") -> None:
+        """Initialize with reference to sharded index.
+
+        :param sharded_index: The ShardedIndex to iterate vectors from
+        """
+        self._index = sharded_index
+
+    def __len__(self) -> int:
+        """Return total number of vectors across all shards."""
+        return len(self._index)
+
+    def __iter__(self):
+        """Yield vectors from all shards lazily.
+
+        Iterates through view shards first, then active shard.
+        """
+        for idx in self._index._viewed_indexes:
+            yield from idx.vectors
+        if self._index._active_shard is not None:
+            yield from self._index._active_shard.vectors
+
+    def __getitem__(self, index: int | slice) -> NDArray[Any]:
+        """Support indexing and slicing.
+
+        :param index: Integer index or slice
+        :return: Single vector or array of vectors
+        """
+        if isinstance(index, slice):
+            # Handle slicing by materializing the requested range
+            vectors = list(self)
+            sliced = vectors[index]
+            if not sliced:
+                dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
+                return np.empty((0, self._index.ndim), dtype=dtype)
+            return np.vstack(sliced)
+        else:
+            # Handle single index
+            if index < 0:
+                index = len(self) + index
+            if index < 0 or index >= len(self):
+                raise IndexError("index out of range")
+
+            # Iterate through shards to find the vector at the given index
+            current = 0
+            for idx in self._index._viewed_indexes:
+                shard_len = len(idx)
+                if current + shard_len > index:
+                    return idx.vectors[index - current]
+                current += shard_len
+
+            if self._index._active_shard is not None:
+                return self._index._active_shard.vectors[index - current]
+
+            raise IndexError("index out of range")  # pragma: no cover
+
+    def __array__(self, dtype: Any = None) -> NDArray[Any]:
+        """Support numpy array conversion.
+
+        Warning: This materializes all vectors into memory.
+
+        :param dtype: Optional dtype for the result array
+        :return: 2D numpy array of all vectors
+        """
+        vectors = list(self)
+        if not vectors:
+            default_dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
+            return np.empty((0, self._index.ndim), dtype=dtype or default_dtype)
+        result = np.vstack(vectors)
+        if dtype is not None and result.dtype != dtype:
+            return result.astype(dtype)
+        return result
+
+    def __repr__(self) -> str:
+        """Return string representation."""
+        return f"ShardedIndexedVectors(count={len(self)})"
+
+
 class ShardedIndex:
     """Sharded vector index for scalable append-only storage.
 
@@ -131,7 +236,6 @@ class ShardedIndex:
     :param multi: Allow multiple vectors per key
     :param path: Directory path for shard storage (required)
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
-    :param view: Load existing shards in view mode only (read-only)
     :param enable_key_lookups: Enable key-based lookups (get, contains)
     :param bloom_filter: Enable bloom filter for fast non-existent key rejection
     """
@@ -148,14 +252,12 @@ class ShardedIndex:
         multi: bool = False,
         path: str | os.PathLike,
         shard_size: int = DEFAULT_SHARD_SIZE,
-        view: bool = False,
         enable_key_lookups: bool = True,
         bloom_filter: bool = True,
     ) -> None:
         """Initialize a sharded index."""
         self._path = Path(path)
         self._shard_size = shard_size
-        self._view_mode = view
         self._use_bloom = bloom_filter
 
         # Initialize shard containers early (used by _discover_shards)
@@ -190,11 +292,9 @@ class ShardedIndex:
         }
 
         if existing_shards:
-            if view:
-                self.view()
-            else:
-                self.load()
-        elif not view:
+            # Load existing index
+            self._load_existing()
+        else:
             # Create first active shard and bloom filter for new index
             self._active_shard = self._create_shard()
             if self._use_bloom:
@@ -221,11 +321,7 @@ class ShardedIndex:
         :param log: Enable progress logging
         :param progress: Progress callback
         :return: Key(s) for added vectors
-        :raises RuntimeError: If index is in view mode
         """
-        if self._view_mode:
-            raise RuntimeError("Cannot add to index opened in view mode")
-
         if self._active_shard is None:
             self._active_shard = self._create_shard()
 
@@ -556,8 +652,8 @@ class ShardedIndex:
         :param path_or_buffer: Ignored (uses internal path management)
         :param progress: Progress callback
         """
-        # Save bloom filter if it exists and we're not in view (read-only) mode
-        if self._bloom is not None and not self._view_mode:
+        # Save bloom filter if it exists
+        if self._bloom is not None:
             bloom_path = self._path / BLOOM_FILENAME
             with timer("ShardedIndex save bloom filter"):
                 self._bloom.save(bloom_path)
@@ -583,12 +679,8 @@ class ShardedIndex:
         :param save: Whether to save the bloom filter to disk after rebuilding
         :param log_progress: Whether to log progress per shard
         :return: Number of keys added to the bloom filter
-        :raises RuntimeError: If index is in view mode
         """
         from loguru import logger
-
-        if self._view_mode:
-            raise RuntimeError("Cannot rebuild bloom filter in view mode")
 
         # Create fresh bloom filter
         self._bloom = ScalableBloomFilter()
@@ -632,17 +724,11 @@ class ShardedIndex:
 
         return count
 
-    def load(
-        self,
-        path_or_buffer: str | os.PathLike | None = None,
-        progress: Callable[[int, int], bool] | None = None,
-    ) -> None:
-        """Load shards from directory (active shard in load mode).
+    def _load_existing(self) -> None:
+        """Load existing shards from directory.
 
-        :param path_or_buffer: Ignored (uses internal path management)
-        :param progress: Progress callback
+        Finished shards are memory-mapped (read-only), last shard is loaded for writes.
         """
-        self._view_mode = False
         self._invalidate_shard_cache()
         shard_files = self._discover_shards()
 
@@ -654,9 +740,10 @@ class ShardedIndex:
             self._active_shard = self._create_shard()
             self._view_shards = None
             # Create bloom filter for new empty index if enabled
+            # (Skip if bloom file exists but shards don't - corruption recovery)
             if self._use_bloom and self._bloom is None:
                 self._bloom = ScalableBloomFilter()
-            return
+            return  # pragma: no cover - defensive path for corruption recovery
 
         with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}", log_start=True):
             # All but the last shard go into view mode
@@ -692,88 +779,6 @@ class ShardedIndex:
         self._config["expansion_add"] = active_shard.expansion_add
         self._config["expansion_search"] = active_shard.expansion_search
         self._config["multi"] = active_shard.multi
-
-    def view(
-        self,
-        path_or_buffer: str | os.PathLike | None = None,
-        progress: Callable[[int, int], bool] | None = None,
-    ) -> None:
-        """View shards from directory (all shards in view mode, read-only).
-
-        :param path_or_buffer: Ignored (uses internal path management)
-        :param progress: Progress callback
-        """
-        self._view_mode = True
-        self._invalidate_shard_cache()
-        shard_files = self._discover_shards()
-
-        # Load bloom filter if exists (view mode - read only)
-        if self._use_bloom:
-            bloom_path = self._path / BLOOM_FILENAME
-            if bloom_path.exists():
-                with timer("ShardedIndex load bloom filter"):
-                    self._bloom = ScalableBloomFilter.load(bloom_path)
-            else:
-                # No bloom filter file - disable bloom filtering for this session
-                self._bloom = None
-
-        if not shard_files:
-            self._view_shards = None
-            self._active_shard = None
-            return
-
-        with timer(f"ShardedIndex view {len(shard_files)} shards from {self._path}", log_start=True):
-            # All shards in view mode (read-only)
-            # Using workaround for usearch bug #643: Indexes(paths=[...]) segfaults
-            # Keep references to prevent GC (Indexes.merge stores references, not copies)
-            self._viewed_indexes = []
-            view_shards = Indexes()
-            for p in shard_files:
-                viewed = self._restore_shard(p, view=True)
-                assert viewed is not None
-                self._viewed_indexes.append(viewed)
-                view_shards.merge(viewed)
-            self._view_shards = view_shards
-            self._active_shard = None
-
-    @staticmethod
-    def restore(
-        path: str | os.PathLike,
-        view: bool = False,
-        **kwargs: Any,
-    ) -> ShardedIndex | None:
-        """Restore a ShardedIndex from a directory.
-
-        :param path: Directory containing shard files
-        :param view: Open in view mode (read-only)
-        :param kwargs: Additional arguments passed to constructor
-        :return: Restored ShardedIndex or None if invalid
-        """
-        path = Path(path)
-        if not path.exists() or not path.is_dir():
-            return None
-
-        # Discover shard files
-        shard_files = sorted(
-            path.glob("shard_*.usearch"),
-            key=lambda p: int(p.stem.split("_")[1]),
-        )
-        if not shard_files:
-            return None
-
-        # Read metadata from first shard to get configuration
-        meta = Index.metadata(str(shard_files[0]))
-        if not meta:  # pragma: no cover (Index.metadata raises on invalid files)
-            return None
-
-        return ShardedIndex(
-            ndim=meta["dimensions"],
-            dtype=meta["kind_scalar"],
-            metric=meta["kind_metric"],
-            path=path,
-            view=view,
-            **kwargs,
-        )
 
     @staticmethod
     def metadata(path: str | os.PathLike) -> dict | None:
@@ -988,9 +993,24 @@ class ShardedIndex:
         return ShardedIndexedKeys(self)
 
     @property
-    def vectors(self) -> None:
-        """Not supported - would need to aggregate across shards."""
-        raise NotImplementedError("vectors property not supported for ShardedIndex")
+    def vectors(self) -> ShardedIndexedVectors:
+        """Lazy iterator over all vectors across all shards.
+
+        Returns a ShardedIndexedVectors object that supports:
+        - Iteration: for vec in idx.vectors
+        - Length: len(idx.vectors)
+        - Indexing: idx.vectors[0], idx.vectors[-1]
+        - Slicing: idx.vectors[:10]
+        - Numpy conversion: np.asarray(idx.vectors)
+
+        This is a live view - reflects current state at iteration time.
+
+        Note: Unlike usearch Index.vectors which returns an np.ndarray immediately,
+        this returns a lazy iterator appropriate for larger-than-RAM indexes.
+
+        :return: ShardedIndexedVectors iterator
+        """
+        return ShardedIndexedVectors(self)
 
     # === Helper Methods ===
 

@@ -89,22 +89,6 @@ def test_search_with_radius(tmp_path):
     assert len(matches.keys) >= 1
 
 
-def test_search_view_only_with_radius(tmp_path):
-    """Test search on view-only index applies radius filter."""
-    # Create and save
-    index1 = ShardedIndex(ndim=64, path=tmp_path)
-    vectors = np.random.rand(10, 64).astype(np.float32)
-    index1.add(list(range(10)), vectors)
-    index1.save()
-
-    # Reopen in view mode
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    # Search with radius
-    matches = index2.search(vectors[0], count=5, radius=0.0001)
-    assert len(matches.keys) >= 1
-
-
 def test_search_batch_with_radius(tmp_path):
     """Test batch search with radius constraint."""
     index = ShardedIndex(ndim=64, path=tmp_path)
@@ -137,22 +121,3 @@ def test_search_with_exact_flag(tmp_path):
     assert len(matches.keys) > 0
 
 
-def test_search_view_only_batch_with_radius(tmp_path):
-    """Test batch search on view-only index with radius filter."""
-    # Create and save
-    index1 = ShardedIndex(ndim=64, path=tmp_path)
-    vectors = np.random.rand(20, 64).astype(np.float32)
-    index1.add(list(range(20)), vectors)
-    index1.save()
-
-    # Reopen in view mode
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    # Batch search with radius
-    batch_matches = index2.search(vectors[:3], count=5, radius=0.0001)
-
-    assert len(batch_matches) == 3
-    # Verify radius filtering worked
-    for i in range(3):
-        for dist in batch_matches.distances[i]:
-            assert dist <= 0.0001 or dist == float("inf")

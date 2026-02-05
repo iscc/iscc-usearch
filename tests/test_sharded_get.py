@@ -5,7 +5,6 @@ Confirms expected behavior when retrieving vectors by key:
 - Single key retrieval
 - Multiple keys retrieval
 - Handling missing keys
-- Handling no active shard
 """
 
 import numpy as np
@@ -35,24 +34,6 @@ def test_get_multiple_keys(tmp_path):
     results = index.get([0, 2, 4])
 
     assert len(results) == 3
-
-
-def test_get_no_active_shard_single(tmp_path):
-    """Test get returns None when no active shard (single key)."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    result = index.get(42)
-
-    assert result is None
-
-
-def test_get_no_active_shard_multiple(tmp_path):
-    """Test get returns list of None when no active shard (multiple keys)."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    result = index.get([1, 2, 3])
-
-    assert result == [None, None, None]
 
 
 def test_get_across_shards_single(tmp_path):
@@ -102,26 +83,6 @@ def test_get_across_shards_batch(tmp_path):
     assert np.allclose(results[1], vectors[2], atol=0.01)
     assert np.allclose(results[2], vectors[3], atol=0.01)
     assert results[3] is None  # Missing key
-
-
-def test_get_view_mode_across_shards(tmp_path):
-    """Test get works in view mode across shards."""
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
-    vec = np.arange(64, dtype=np.float32)
-    index.add(1, vec)
-    index.add(2, vec * 2)
-    index.save()
-
-    # Open in view mode
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    assert index2._active_shard is None
-
-    result1 = index2.get(1)
-    result2 = index2.get(2)
-
-    assert result1 is not None
-    assert result2 is not None
-    assert np.allclose(result1, vec, atol=0.01)
 
 
 def test_get_missing_key_returns_none(tmp_path):

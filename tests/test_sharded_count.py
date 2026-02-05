@@ -4,7 +4,6 @@ Test ShardedIndex count operations.
 Confirms expected behavior for counting key occurrences:
 - Single key count
 - Multiple keys count
-- Handling no active shard
 """
 
 import numpy as np
@@ -31,22 +30,6 @@ def test_count_multiple_keys(tmp_path):
     assert result[0] == 1
     assert result[1] == 1
     assert result[2] == 0
-
-
-def test_count_no_active_shard_single(tmp_path):
-    """Test count returns 0 when no active shard (single key)."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index.count(42) == 0
-
-
-def test_count_no_active_shard_multiple(tmp_path):
-    """Test count returns array of zeros when no active shard."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    result = index.count([1, 2, 3])
-
-    assert np.all(result == 0)
 
 
 def test_count_across_shards_single(tmp_path):
@@ -82,21 +65,6 @@ def test_count_across_shards_batch(tmp_path):
     assert result[1] == 1
     assert result[2] == 1
     assert result[3] == 0
-
-
-def test_count_view_mode_across_shards(tmp_path):
-    """Test count works in view mode across shards."""
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
-    index.add(1, np.random.rand(64).astype(np.float32))
-    index.add(2, np.random.rand(64).astype(np.float32))
-    index.save()
-
-    # Open in view mode
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-    assert index2._active_shard is None
-
-    assert index2.count(1) == 1
-    assert index2.count(2) == 1
 
 
 def test_count_empty_keys_array(tmp_path):

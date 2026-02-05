@@ -103,11 +103,8 @@ matches = index.search(query, count=10)
 # Save current state
 index.save()
 
-# Restore existing index
-index = ShardedNphdIndex.restore("./index_shards")
-
-# Read-only mode (memory-mapped)
-index = ShardedNphdIndex.restore("./index_shards", view=True)
+# Reopen existing index (auto-detects and loads existing shards)
+index = ShardedNphdIndex(path="./index_shards")
 ```
 
 ### ShardedIndex
@@ -153,17 +150,17 @@ For concurrent access, use a single process with async/await patterns.
 |--------|-------------|
 | `add(keys, vectors)` | Add vectors (auto-rotates shards) |
 | `search(vectors, count)` | Search across all shards |
-| `get(keys)` | Retrieve from active shard only |
-| `contains(keys)` | Check existence in active shard |
-| `save()` | Save active shard |
-| `load()` | Load shards (active in write mode) |
-| `view()` | View all shards (read-only) |
-| `restore(path)` | Static method to restore from directory |
+| `get(keys)` | Retrieve vectors by key from any shard |
+| `contains(keys)` | Check existence across all shards |
+| `count(keys)` | Count occurrences across all shards |
+| `save()` | Save active shard and bloom filter |
 
 | Property | Description |
 |----------|-------------|
 | `size` | Total vectors across all shards |
 | `shard_count` | Number of shard files |
+| `keys` | Lazy iterator over all keys |
+| `vectors` | Lazy iterator over all vectors |
 | `max_dim` | Maximum bits per vector (NPHD only) |
 
 ## License

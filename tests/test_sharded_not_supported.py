@@ -11,7 +11,6 @@ Confirms that append-only and unsupported operations raise NotImplementedError:
 - copy
 - clear
 - reset
-- vectors property
 """
 
 import pytest
@@ -89,11 +88,3 @@ def test_reset_not_supported(tmp_path):
 
     with pytest.raises(NotImplementedError, match="not supported"):
         index.reset()
-
-
-def test_vectors_property_not_supported(tmp_path):
-    """Test vectors property raises NotImplementedError."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-
-    with pytest.raises(NotImplementedError, match="not supported"):
-        _ = index.vectors

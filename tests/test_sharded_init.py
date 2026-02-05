@@ -4,7 +4,6 @@ Test ShardedIndex initialization.
 Confirms expected behavior when creating ShardedIndex with various parameter combinations:
 - ndim (dimensionality)
 - path (directory for shards)
-- view mode (read-only vs read-write)
 - configuration options (dtype, connectivity, expansion, multi, etc.)
 - loading existing shards
 """
@@ -33,14 +32,6 @@ def test_init_empty_directory(tmp_path):
     assert index.shard_count == 0
 
 
-def test_init_view_mode_empty(tmp_path):
-    """Test view mode with empty directory."""
-    index = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert index._active_shard is None
-    assert index._view_shards is None
-
-
 def test_init_loads_existing_shards(tmp_path):
     """Test init loads existing shards."""
     # Create and save an index
@@ -54,22 +45,6 @@ def test_init_loads_existing_shards(tmp_path):
 
     assert len(index2) == 10
     assert index2.shard_count == 1
-
-
-def test_init_view_mode_existing_shards(tmp_path):
-    """Test view mode loads existing shards as read-only."""
-    # Create and save an index
-    index1 = ShardedIndex(ndim=64, path=tmp_path)
-    vectors = np.random.rand(10, 64).astype(np.float32)
-    index1.add(list(range(10)), vectors)
-    index1.save()
-
-    # Reopen in view mode
-    index2 = ShardedIndex(ndim=64, path=tmp_path, view=True)
-
-    assert len(index2) == 10
-    assert index2._active_shard is None
-    assert index2._view_shards is not None
 
 
 def test_init_with_all_config_options(tmp_path):
@@ -119,19 +94,3 @@ def test_init_without_ndim_autodetects_from_existing_shards(tmp_path):
 
     assert index2.ndim == 128
     assert len(index2) == 5
-
-
-def test_init_without_ndim_view_mode_autodetects(tmp_path):
-    """Test that init without ndim auto-detects in view mode."""
-    # Create and save an index
-    index1 = ShardedIndex(ndim=256, path=tmp_path)
-    vectors = np.random.rand(3, 256).astype(np.float32)
-    index1.add(list(range(3)), vectors)
-    index1.save()
-
-    # Reopen in view mode without ndim
-    index2 = ShardedIndex(path=tmp_path, view=True)
-
-    assert index2.ndim == 256
-    assert len(index2) == 3
-    assert index2._view_mode is True
