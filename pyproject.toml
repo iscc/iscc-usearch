@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "A thin wrapper around USearch to support variable length bit-vectors and larger than RAM indexes."
 readme = "README.md"
 authors = [
-    { name = "Titusz Pan", email = "titusz.pan@gmail.com" }
+    { name = "Titusz Pan", email = "tp@py7.de" }
 ]
 requires-python = ">=3.12"
 dependencies = [
@@ -23,7 +23,7 @@ dev = [
     "poethepoet>=0.38.0",
     "bandit>=1.9.2",
     "prek>=0.2.19",
-    "pyright>=1.1.407",
+    "ty>=0.0.15",
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.6",
@@ -58,13 +58,12 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 
-[tool.pyright]
-typeCheckingMode = "basic"
+[tool.ty.src]
 include = ["src/iscc_usearch"]
-reportAttributeAccessIssue = "warning"
-reportArgumentType = "warning"
-reportInvalidTypeForm = false        # Numba @cfunc signatures use special type syntax
-reportInvalidTypeArguments = false   # Numba CPointer[type] syntax
-reportOperatorIssue = false          # Numba cfunc body operations
-reportAssignmentType = "warning"
-reportReturnType = "warning"
+
+[tool.ty.rules]
+# Downgrade errors caused by usearch's incomplete type annotations
+invalid-argument-type = "warn"
+invalid-method-override = "warn"
+invalid-return-type = "warn"
+invalid-assignment = "warn"

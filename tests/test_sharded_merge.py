@@ -10,7 +10,8 @@ Confirms expected behavior for merging search results across shards:
 """
 
 import numpy as np
-from usearch.index import Index, Matches
+import pytest
+from usearch.index import Matches
 
 from iscc_usearch.sharded import ShardedIndex
 
