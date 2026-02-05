@@ -9,8 +9,6 @@ Confirm the expected behavior of usearch Index properties with
   nlevels, stats, specs, hardware_acceleration, serialized_length
 """
 
-import warnings
-
 import numpy as np
 import pytest
 from numpy.testing import assert_array_equal
@@ -198,25 +196,21 @@ def test_keys_property_returns_indexed_keys():
 
 
 def test_vectors_property_returns_all_vectors():
-    """idx.vectors returns array of all stored vectors."""
+    """idx.vectors returns all stored vectors as list of arrays."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
     idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
     idx.add(2, np.array([100, 150, 200, 250], dtype=np.uint8))
 
-    # Suppress DeprecationWarning from usearch library's __array__ implementation
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", message="__array__ implementation doesn't accept")
-        result = idx.vectors
+    result = idx.vectors
 
-    assert isinstance(result, np.ndarray)
-    assert result.shape == (2, 4)
-    assert result.dtype == np.uint8
+    assert isinstance(result, list)
+    assert len(result) == 2
+    assert all(isinstance(v, np.ndarray) for v in result)
 
     # Verify both vectors are present (order not guaranteed)
     vector_1 = np.array([178, 204, 60, 240], dtype=np.uint8)
     vector_2 = np.array([100, 150, 200, 250], dtype=np.uint8)
 
-    # Check if each expected vector is in the result
     found_1 = any(np.array_equal(row, vector_1) for row in result)
     found_2 = any(np.array_equal(row, vector_2) for row in result)
 

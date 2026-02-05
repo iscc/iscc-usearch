@@ -8,17 +8,10 @@ Confirm the expected behavior of usearch Index.get() with
 """
 
 import numpy as np
-import pytest
 from numpy.testing import assert_array_equal
 from usearch.index import Index, MetricKind, ScalarKind
 
 
-# usearch bug: get() returns garbage for non-existent keys instead of None
-# https://github.com/unum-cloud/USearch/issues/494
-USEARCH_GET_BUG = pytest.mark.xfail(reason="usearch bug #494: get() returns garbage for missing keys")
-
-
-@USEARCH_GET_BUG
 def test_index_get_single_empty_returns_none():
     """This is a regression test for https://github.com/unum-cloud/USearch/issues/663."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
@@ -51,7 +44,6 @@ def test_get_single_key_exists_returns_1d_array():
     assert_array_equal(result, expected)
 
 
-@USEARCH_GET_BUG
 def test_get_single_key_missing_returns_none():
     """Single key that doesn't exist returns None."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
@@ -63,7 +55,6 @@ def test_get_single_key_missing_returns_none():
     assert result is expected
 
 
-@USEARCH_GET_BUG
 def test_get_multiple_keys_all_exist_returns_list_of_1d_arrays():
     """Multiple existing keys return list of 1D arrays."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
@@ -88,7 +79,6 @@ def test_get_multiple_keys_all_exist_returns_list_of_1d_arrays():
     assert_array_equal(result[2], expected[2])
 
 
-@USEARCH_GET_BUG
 def test_get_multiple_keys_mixed_returns_list_with_none():
     """Multiple keys with some missing return list with None values."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
@@ -113,7 +103,6 @@ def test_get_multiple_keys_mixed_returns_list_with_none():
     assert_array_equal(result[2], expected[2])
 
 
-@USEARCH_GET_BUG
 def test_get_multiple_keys_all_missing_returns_list_of_none():
     """Multiple non-existing keys return list of None values."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
@@ -240,7 +229,6 @@ def test_get_multiple_keys_mixed_returns_list_with_none_multi():
 # Tests for Index.get() with enable_key_lookups=False
 
 
-@USEARCH_GET_BUG
 def test_get_single_key_returns_none_when_key_lookups_disabled():
     """
     When enable_key_lookups=False, Index.get() returns None for all keys.

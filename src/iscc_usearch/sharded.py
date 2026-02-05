@@ -383,7 +383,7 @@ class ShardedIndex:
         :raises ValueError: If count < 1
         """
         if count < 1:
-            raise ValueError("count must be >= 1")
+            raise ValueError("`count` must be >= 1")
 
         vectors = np.asarray(vectors)
         is_single = vectors.ndim == 1
@@ -928,17 +928,9 @@ class ShardedIndex:
 
     @property
     def serialized_length(self) -> int:
-        """Serialized length of active shard.
-
-        Note: usearch pybind11 binding bug - property requires config arg that isn't exposed.
-        Falls back to memory_usage on TypeError.
-        """
+        """Serialized length of active shard."""
         if self._active_shard is not None:
-            try:
-                return self._active_shard.serialized_length
-            except TypeError:
-                # usearch pybind11 bug: serialized_length missing default config arg
-                return self._active_shard.memory_usage
+            return self._active_shard.serialized_length
         return 0
 
     @property

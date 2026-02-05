@@ -151,7 +151,7 @@ def test_search_with_count_zero_raises_value_error(nphd_index_factory):
 
     query = np.array([178, 204, 60, 240], dtype=np.uint8)
 
-    with pytest.raises(ValueError, match="count must be >= 1"):
+    with pytest.raises(ValueError, match=r"`count` must be >= 1"):
         idx.search(query, count=0)
 
 
@@ -163,5 +163,5 @@ def test_search_with_negative_count_raises_value_error(nphd_index_factory):
 
     query = np.array([178, 204, 60, 240], dtype=np.uint8)
 
-    with pytest.raises(ValueError, match="count must be >= 1"):
+    with pytest.raises(ValueError, match=r"`count` must be >= 1"):
         idx.search(query, count=-5)

@@ -13,48 +13,6 @@ def create_index():
     return Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
 
 
-# Tests for get() bug fix
-
-
-def test_get_single_nonexistent_returns_none():
-    """get() returns None for non-existent single key."""
-    idx = create_index()
-    assert idx.get(999) is None
-
-
-def test_get_single_existing_returns_vector():
-    """get() returns vector for existing single key."""
-    idx = create_index()
-    vec = np.array([1, 2, 3, 4], dtype=np.uint8)
-    idx.add(1, vec)
-    assert_array_equal(idx.get(1), vec)
-
-
-def test_get_multiple_mixed_returns_none_for_missing():
-    """get() returns None for non-existent keys in batch."""
-    idx = create_index()
-    idx.add(1, np.array([1, 1, 1, 1], dtype=np.uint8))
-    idx.add(3, np.array([3, 3, 3, 3], dtype=np.uint8))
-
-    results = idx.get([1, 2, 3])  # key 2 doesn't exist
-
-    assert_array_equal(results[0], np.array([1, 1, 1, 1], dtype=np.uint8))
-    assert results[1] is None
-    assert_array_equal(results[2], np.array([3, 3, 3, 3], dtype=np.uint8))
-
-
-# Tests for search() bug fix
-
-
-def test_search_count_zero_raises_valueerror():
-    """search() with count=0 raises ValueError instead of segfault."""
-    idx = create_index()
-    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
-
-    with pytest.raises(ValueError, match="count must be >= 1"):
-        idx.search(np.array([1, 2, 3, 4], dtype=np.uint8), count=0)
-
-
 # Tests for upsert()
 
 

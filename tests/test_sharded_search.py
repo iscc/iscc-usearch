@@ -57,7 +57,7 @@ def test_search_count_validation(tmp_path):
     """Test that search raises for count < 1."""
     index = ShardedIndex(ndim=64, path=tmp_path)
 
-    with pytest.raises(ValueError, match="count must be >= 1"):
+    with pytest.raises(ValueError, match=r"`count` must be >= 1"):
         index.search(np.random.rand(64).astype(np.float32), count=0)
 
 

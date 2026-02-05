@@ -8,10 +8,22 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "usearch>=2.21.0",
     "numba>=0.62.1",
     "loguru>=0.7.3",
     "fastbloom-rs>=0.5.10",
+    # usearch 2.23.2 patched wheels from iscc/usearch fork
+    # Python 3.12
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-macosx_10_13_universal2.whl ; sys_platform == 'darwin' and python_version == '3.12'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.12'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.12'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.12'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_arm64.whl ; sys_platform == 'win32' and platform_machine == 'ARM64' and python_version == '3.12'",
+    # Python 3.13
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-macosx_10_13_universal2.whl ; sys_platform == 'darwin' and python_version == '3.13'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl ; sys_platform == 'linux' and platform_machine == 'x86_64' and python_version == '3.13'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl ; sys_platform == 'linux' and platform_machine == 'aarch64' and python_version == '3.13'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.13'",
+    "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_arm64.whl ; sys_platform == 'win32' and platform_machine == 'ARM64' and python_version == '3.13'",
 ]
 
 [build-system]
@@ -41,10 +53,7 @@ skips = ["B101"]  # Allow assert statements for parameter validation
 [tool.pytest.ini_options]
 addopts = "--cov=iscc_usearch --cov-report=term-missing --cov-fail-under=100"
 testpaths = ["tests"]
-filterwarnings = [
-    # usearch IndexedKeys.__array__ doesn't support numpy 2.0 copy keyword yet
-    "ignore:__array__ implementation doesn't accept a copy keyword:DeprecationWarning",
-]
+filterwarnings = []
 
 [tool.coverage.run]
 source = ["src/iscc_usearch"]
@@ -67,3 +76,5 @@ invalid-argument-type = "warn"
 invalid-method-override = "warn"
 invalid-return-type = "warn"
 invalid-assignment = "warn"
+no-matching-overload = "warn"
+possibly-missing-attribute = "warn"
