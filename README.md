@@ -32,15 +32,15 @@ from iscc_usearch import NphdIndex
 index = NphdIndex(max_dim=256)
 
 # Add variable-length vectors with integer keys
-index.add(1, np.array([255, 128, 64, 32], dtype=np.uint8))      # 32-bit
-index.add(2, np.array([255, 128, 64, 33], dtype=np.uint8))      # 32-bit (1 bit different)
-index.add(3, np.array([255, 128], dtype=np.uint8))              # 16-bit prefix
+index.add(1, np.array([255, 128, 64, 32], dtype=np.uint8))  # 32-bit
+index.add(2, np.array([255, 128, 64, 33], dtype=np.uint8))  # 32-bit (1 bit different)
+index.add(3, np.array([255, 128], dtype=np.uint8))  # 16-bit prefix
 
 # Search returns matches sorted by NPHD
 query = np.array([255, 128, 64, 32], dtype=np.uint8)
 matches = index.search(query, count=3)
 
-print(matches.keys)       # [1, 2, 3]
+print(matches.keys)  # [1, 2, 3]
 print(matches.distances)  # [0.0, 0.03125, 0.0]  # Normalized distances
 ```
 
@@ -49,8 +49,8 @@ print(matches.distances)  # [0.0, 0.03125, 0.0]  # Normalized distances
 Standard Hamming distance fails when comparing vectors of different lengths. NPHD solves this by:
 
 1. Comparing only the **common prefix** (the shorter of the two vectors)
-2. Counting bit differences in that prefix
-3. **Normalizing** by the prefix length (distance / bits)
+1. Counting bit differences in that prefix
+1. **Normalizing** by the prefix length (distance / bits)
 
 This produces distances in the range [0.0, 1.0] regardless of vector lengths, enabling meaningful similarity comparisons between codes of different granularity.
 
@@ -132,36 +132,36 @@ For concurrent access, use a single process with async/await patterns.
 
 ### NphdIndex
 
-| Method | Description |
-|--------|-------------|
-| `add(keys, vectors)` | Add vectors with integer keys |
-| `upsert(keys, vectors)` | Insert or update vectors (idempotent) |
-| `search(vectors, count)` | Find k nearest neighbors |
-| `get(keys)` | Retrieve vectors by key |
-| `save(path)` | Save index to file |
-| `load(path)` | Load index from file |
-| `view(path)` | Memory-map index (read-only) |
-| `restore(path)` | Static method to restore from file |
-| `copy()` | Create a copy of the index |
+| Method                   | Description                           |
+| ------------------------ | ------------------------------------- |
+| `add(keys, vectors)`     | Add vectors with integer keys         |
+| `upsert(keys, vectors)`  | Insert or update vectors (idempotent) |
+| `search(vectors, count)` | Find k nearest neighbors              |
+| `get(keys)`              | Retrieve vectors by key               |
+| `save(path)`             | Save index to file                    |
+| `load(path)`             | Load index from file                  |
+| `view(path)`             | Memory-map index (read-only)          |
+| `restore(path)`          | Static method to restore from file    |
+| `copy()`                 | Create a copy of the index            |
 
 ### ShardedNphdIndex / ShardedIndex
 
-| Method | Description |
-|--------|-------------|
-| `add(keys, vectors)` | Add vectors (auto-rotates shards) |
-| `search(vectors, count)` | Search across all shards |
-| `get(keys)` | Retrieve vectors by key from any shard |
-| `contains(keys)` | Check existence across all shards |
-| `count(keys)` | Count occurrences across all shards |
-| `save()` | Save active shard and bloom filter |
+| Method                   | Description                            |
+| ------------------------ | -------------------------------------- |
+| `add(keys, vectors)`     | Add vectors (auto-rotates shards)      |
+| `search(vectors, count)` | Search across all shards               |
+| `get(keys)`              | Retrieve vectors by key from any shard |
+| `contains(keys)`         | Check existence across all shards      |
+| `count(keys)`            | Count occurrences across all shards    |
+| `save()`                 | Save active shard and bloom filter     |
 
-| Property | Description |
-|----------|-------------|
-| `size` | Total vectors across all shards |
-| `shard_count` | Number of shard files |
-| `keys` | Lazy iterator over all keys |
-| `vectors` | Lazy iterator over all vectors |
-| `max_dim` | Maximum bits per vector (NPHD only) |
+| Property      | Description                         |
+| ------------- | ----------------------------------- |
+| `size`        | Total vectors across all shards     |
+| `shard_count` | Number of shard files               |
+| `keys`        | Lazy iterator over all keys         |
+| `vectors`     | Lazy iterator over all vectors      |
+| `max_dim`     | Maximum bits per vector (NPHD only) |
 
 ## License
 
