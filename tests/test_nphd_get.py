@@ -191,23 +191,3 @@ def test_get_multiple_keys_mixed_multi_returns_list_with_none():
     assert_array_equal(result[0][0], v1a)
     assert_array_equal(result[0][1], v1b)
     assert_array_equal(result[2][0], v3)
-
-
-# Test with enable_key_lookups=False
-
-
-def test_get_returns_none_when_key_lookups_disabled():
-    """
-    When enable_key_lookups=False, get() returns None for all keys.
-
-    This matches parent class behavior - disabling key lookups prevents
-    vector retrieval by key.
-    """
-    idx = NphdIndex(max_dim=256, enable_key_lookups=False)
-    idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
-
-    result_exists = idx.get(1)
-    result_missing = idx.get(999)
-
-    assert result_exists is None
-    assert result_missing is None

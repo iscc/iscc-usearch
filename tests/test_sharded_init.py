@@ -58,7 +58,6 @@ def test_init_with_all_config_options(tmp_path):
         multi=True,
         path=tmp_path,
         shard_size=1024,
-        enable_key_lookups=True,
     )
 
     assert index.ndim == 128

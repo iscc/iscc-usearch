@@ -76,28 +76,3 @@ def test_count_empty_keys_array(tmp_path):
 
     assert isinstance(result, np.ndarray)
     assert len(result) == 0
-
-
-def test_count_enable_key_lookups_false_single(tmp_path):
-    """Test count returns 0 for single key when enable_key_lookups=False."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-    index.add(1, np.random.rand(64).astype(np.float32))
-    index.save()
-
-    # Reload with enable_key_lookups=False
-    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
-
-    assert index2.count(1) == 0
-
-
-def test_count_enable_key_lookups_false_batch(tmp_path):
-    """Test count returns array of zeros when enable_key_lookups=False."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-    index.add([1, 2], np.random.rand(2, 64).astype(np.float32))
-    index.save()
-
-    # Reload with enable_key_lookups=False
-    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
-
-    result = index2.count([1, 2])
-    assert np.all(result == 0)

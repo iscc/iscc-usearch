@@ -253,7 +253,6 @@ class ShardedIndex:
     :param multi: Allow multiple vectors per key
     :param path: Directory path for shard storage (required)
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
-    :param enable_key_lookups: Enable key-based lookups (get, contains)
     :param bloom_filter: Enable bloom filter for fast non-existent key rejection
     """
 
@@ -269,7 +268,6 @@ class ShardedIndex:
         multi: bool = False,
         path: str | os.PathLike,
         shard_size: int = DEFAULT_SHARD_SIZE,
-        enable_key_lookups: bool = True,
         bloom_filter: bool = True,
     ) -> None:
         """Initialize a sharded index."""
@@ -305,7 +303,6 @@ class ShardedIndex:
             "expansion_add": expansion_add,
             "expansion_search": expansion_search,
             "multi": multi,
-            "enable_key_lookups": enable_key_lookups,
         }
 
         if existing_shards:
@@ -432,20 +429,10 @@ class ShardedIndex:
     ) -> NDArray[Any] | list | None:
         """Retrieve vectors by key from any shard.
 
-        When enable_key_lookups=True (default), searches all shards.
-        When enable_key_lookups=False, returns None for all keys (safe, unlike usearch).
-
         :param keys: Integer key(s) to lookup
         :param dtype: Optional data type for returned vectors
         :return: Vector(s) or None for missing keys
         """
-        # Match usearch behavior: no key lookups = can't find keys
-        # Unlike usearch, we return None instead of garbage
-        if not self._config.get("enable_key_lookups", True):
-            if isinstance(keys, int):
-                return None
-            return [None] * len(keys)
-
         if isinstance(keys, int):
             return self._get_single(keys, dtype)
         return self._get_batch(keys, dtype)
@@ -526,19 +513,11 @@ class ShardedIndex:
     def contains(self, keys: int | Any) -> bool | NDArray[np.bool_]:
         """Check if keys exist in any shard.
 
-        When enable_key_lookups=True (default), checks all shards.
-        When enable_key_lookups=False, returns False for all keys (matches usearch).
         When bloom_filter=True (default), uses bloom filter to quickly reject non-existent keys.
 
         :param keys: Integer key(s) to check
         :return: Boolean or array of booleans
         """
-        # Match usearch behavior: no key lookups = always False
-        if not self._config.get("enable_key_lookups", True):
-            if isinstance(keys, int):
-                return False
-            return np.zeros(len(keys), dtype=bool)
-
         if isinstance(keys, int):
             return self._contains_single(keys)
         return self._contains_batch(keys)
@@ -613,18 +592,9 @@ class ShardedIndex:
     def count(self, keys: int | Any) -> int | NDArray[np.uint64]:
         """Count occurrences of keys across all shards (sum aggregation).
 
-        When enable_key_lookups=True (default), counts across all shards.
-        When enable_key_lookups=False, returns 0 for all keys (matches usearch).
-
         :param keys: Integer key(s) to count
         :return: Count or array of counts
         """
-        # Match usearch behavior: no key lookups = can't count keys
-        if not self._config.get("enable_key_lookups", True):
-            if isinstance(keys, int):
-                return 0
-            return np.zeros(len(keys), dtype=np.uint64)
-
         if isinstance(keys, int):
             return self._count_single(keys)
         return self._count_batch(keys)
@@ -991,14 +961,8 @@ class ShardedIndex:
 
         This is a live view - reflects current state at iteration time.
 
-        :raises RuntimeError: When enable_key_lookups=False (keys would be garbage)
         :return: ShardedIndexedKeys iterator
         """
-        if not self._config.get("enable_key_lookups", True):
-            raise RuntimeError(
-                "keys property unavailable when enable_key_lookups=False "
-                "(usearch does not store key mapping in this mode)"
-            )
         return ShardedIndexedKeys(self)
 
     @property
@@ -1079,20 +1043,14 @@ class ShardedIndex:
         return None
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore a shard from disk. Override in subclasses for custom shard types.
-
-        When enable_key_lookups=False, skips expensive hash map population (~2x speedup)
-        but disables contains/get/count operations.
-        """
+        """Restore a shard from disk. Override in subclasses for custom shard types."""
         meta = Index.metadata(str(path))
         if meta is None:  # pragma: no cover - shard files are always valid in practice
             return None
-        enable_lookups = self._config.get("enable_key_lookups", True)
         idx = Index(
             ndim=meta["dimensions"],
             metric=meta["kind_metric"],
             dtype=meta["kind_scalar"],
-            enable_key_lookups=enable_lookups,
         )
         if view:
             idx.view(str(path))

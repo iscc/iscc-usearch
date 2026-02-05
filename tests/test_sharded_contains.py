@@ -78,26 +78,6 @@ def test_contains_across_shards_batch(tmp_path):
     assert not result[3]  # key 999 doesn't exist
 
 
-def test_contains_enable_key_lookups_false(tmp_path):
-    """Test contains returns False for all keys when enable_key_lookups=False."""
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
-    index.add(1, np.random.rand(64).astype(np.float32))
-    index.add(2, np.random.rand(64).astype(np.float32))
-    index.save()
-
-    # Reload with enable_key_lookups=False
-    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
-
-    # All contains() calls should return False (matches usearch behavior)
-    assert index2.contains(1) is False
-    assert index2.contains(2) is False
-    assert index2.contains(999) is False
-
-    # Batch version should return array of False
-    result = index2.contains([1, 2, 999])
-    assert not np.any(result)
-
-
 def test_contains_empty_keys_array(tmp_path):
     """Test contains with empty keys array returns empty array."""
     index = ShardedIndex(ndim=64, path=tmp_path)

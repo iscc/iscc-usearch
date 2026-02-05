@@ -105,32 +105,6 @@ def test_get_empty_keys_array(tmp_path):
     assert result == []
 
 
-def test_get_enable_key_lookups_false_single(tmp_path):
-    """Test get returns None for single key when enable_key_lookups=False."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-    index.add(1, np.random.rand(64).astype(np.float32))
-    index.save()
-
-    # Reload with enable_key_lookups=False
-    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
-
-    # Should return None (safe, unlike usearch garbage)
-    assert index2.get(1) is None
-
-
-def test_get_enable_key_lookups_false_batch(tmp_path):
-    """Test get returns list of None when enable_key_lookups=False."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-    index.add([1, 2], np.random.rand(2, 64).astype(np.float32))
-    index.save()
-
-    # Reload with enable_key_lookups=False
-    index2 = ShardedIndex(ndim=64, path=tmp_path, enable_key_lookups=False)
-
-    result = index2.get([1, 2])
-    assert result == [None, None]
-
-
 def test_get_early_exit_all_keys_found(tmp_path):
     """Test get early exit when all keys found before processing all view shards."""
     # type: () -> None

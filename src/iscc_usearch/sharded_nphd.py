@@ -204,20 +204,14 @@ class ShardedNphdIndex(ShardedIndex):
         )
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore an Index shard from disk and restore NPHD metric.
-
-        When enable_key_lookups=False, skips expensive hash map population (~2x speedup)
-        but disables contains/get/count operations.
-        """
+        """Restore an Index shard from disk and restore NPHD metric."""
         meta = Index.metadata(str(path))
         if meta is None:  # pragma: no cover - shard files are always valid in practice
             return None
-        enable_lookups = self._config.get("enable_key_lookups", True)
         shard = Index(
             ndim=meta["dimensions"],
             metric=create_nphd_metric(),
             dtype=meta["kind_scalar"],
-            enable_key_lookups=enable_lookups,
         )
         if view:
             shard.view(str(path))
@@ -326,9 +320,6 @@ class ShardedNphdIndex(ShardedIndex):
         dtype: Any = None,
     ) -> NDArray[Any] | list | None:
         """Retrieve unpadded variable-length vectors by key(s) from any shard.
-
-        When enable_key_lookups=True (default), searches all shards.
-        When enable_key_lookups=False, returns None for all keys.
 
         :param keys: Integer key(s) to lookup
         :param dtype: Optional data type for returned vectors

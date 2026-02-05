@@ -503,22 +503,6 @@ def test_keys_indexing_empty_after_save_and_rotate(tmp_path):
         _ = keys[100]
 
 
-def test_keys_raises_when_key_lookups_disabled(tmp_path):
-    """Keys property raises RuntimeError when enable_key_lookups=False."""
-    idx = ShardedIndex(
-        ndim=32,
-        metric=MetricKind.Hamming,
-        dtype=ScalarKind.B1,
-        path=tmp_path / "index",
-        enable_key_lookups=False,
-        bloom_filter=False,
-    )
-    idx.add(42, np.array([178, 204, 60, 240], dtype=np.uint8))
-
-    with pytest.raises(RuntimeError, match="keys property unavailable"):
-        _ = idx.keys
-
-
 def test_keys_indexing_defensive_fallback_error(tmp_path):
     """Test defensive IndexError fallback on line 96 via state manipulation."""
     # This is defensive code that shouldn't be reachable in normal use
