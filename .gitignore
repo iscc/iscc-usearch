@@ -14,6 +14,7 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 .coverage
+htmlcov/
 
 # JetBrains IDE
 .idea
@@ -21,6 +22,9 @@ wheels/
 # Local
 experiments/
 notes/
+
+# Documentation build output
+site/
 
 # Claude Code
 .claude/

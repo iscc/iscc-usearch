@@ -1,0 +1,34 @@
+[project]
+site_name = "iscc-usearch"
+site_description = "Scalable approximate nearest neighbor search for variable-length binary bit-vectors."
+site_author = "Titusz Pan"
+site_url = "https://iscc.github.io/iscc-usearch/"
+repo_url = "https://github.com/iscc/iscc-usearch"
+repo_name = "iscc/iscc-usearch"
+copyright = "Copyright &copy; 2025 ISCC Foundation"
+
+nav = [
+  { "Home" = "index.md" },
+  { "Optimizations" = "optimizations.md" },
+]
+
+[project.theme]
+language = "en"
+features = [
+  "navigation.instant",
+  "navigation.sections",
+  "search.highlight",
+  "content.code.copy",
+]
+
+[[project.theme.palette]]
+scheme = "default"
+primary = "indigo"
+accent = "amber"
+toggle = { icon = "lucide/sun", name = "Switch to dark mode" }
+
+[[project.theme.palette]]
+scheme = "slate"
+primary = "indigo"
+accent = "amber"
+toggle = { icon = "lucide/moon", name = "Switch to light mode" }
