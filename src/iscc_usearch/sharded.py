@@ -765,7 +765,8 @@ class ShardedIndex:
                 view_shards = Indexes()
                 for p in view_paths:
                     viewed = self._restore_shard(p, view=True)
-                    assert viewed is not None
+                    if viewed is None:  # pragma: no cover
+                        raise RuntimeError(f"Failed to restore shard: {p}")
                     self._viewed_indexes.append(viewed)
                     view_shards.merge(viewed)
                 self._view_shards = view_shards
@@ -774,7 +775,8 @@ class ShardedIndex:
 
             # Load active shard (writable) and track its path for save()
             active_shard = self._restore_shard(active_path, view=False)
-            assert active_shard is not None
+            if active_shard is None:  # pragma: no cover
+                raise RuntimeError(f"Failed to restore shard: {active_path}")
             self._active_shard = active_shard
             self._active_shard_path = active_path
 
@@ -1136,7 +1138,8 @@ class ShardedIndex:
         # Workaround for usearch bug #643: Indexes(paths=[...]) segfaults
         # Keep reference to prevent GC (Indexes.merge stores references, not copies)
         viewed_shard = self._restore_shard(shard_path, view=True)
-        assert viewed_shard is not None
+        if viewed_shard is None:  # pragma: no cover
+            raise RuntimeError(f"Failed to restore shard: {shard_path}")
         self._viewed_indexes.append(viewed_shard)
         view_shards = self._view_shards
         if view_shards is None:

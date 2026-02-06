@@ -83,15 +83,20 @@ class NphdIndex(Index):
     def __init__(self, max_dim=256, **kwargs):
         # type: (int, Any) -> None
         """Create a new NPHD index."""
-        assert max_dim <= 256, f"`max_dim` must be <= 256 (got {max_dim}); the NPHD metric supports at most 256 bits"
-        assert max_dim % 8 == 0, f"`max_dim` must be a multiple of 8 (got {max_dim})"
+        if max_dim > 256:
+            raise ValueError(f"`max_dim` must be <= 256 (got {max_dim}); the NPHD metric supports at most 256 bits")
+        if max_dim % 8 != 0:
+            raise ValueError(f"`max_dim` must be a multiple of 8 (got {max_dim})")
 
         self.max_dim = max_dim
         self.max_bytes = max_dim // 8
 
-        assert "ndim" not in kwargs, "`ndim` is calculated from `max_dim`"
-        assert "metric" not in kwargs, "`metric` is set automatically (NPHD)"
-        assert "dtype" not in kwargs, "`dtype` is set automatically (ScalarKind.B1)"
+        if "ndim" in kwargs:
+            raise TypeError("`ndim` is calculated from `max_dim`")
+        if "metric" in kwargs:
+            raise TypeError("`metric` is set automatically (NPHD)")
+        if "dtype" in kwargs:
+            raise TypeError("`dtype` is set automatically (ScalarKind.B1)")
 
         metric = create_nphd_metric()
 

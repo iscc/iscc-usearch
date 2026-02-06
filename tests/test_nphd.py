@@ -155,21 +155,33 @@ def test_nphd_index_init_custom_max_dim():
 
 
 def test_nphd_index_init_rejects_ndim():
-    """Test that NphdIndex raises assertion error when ndim is provided."""
-    with pytest.raises(AssertionError, match="`ndim` is calculated from `max_dim`"):
+    """Test that NphdIndex rejects ndim parameter."""
+    with pytest.raises(TypeError, match="`ndim` is calculated from `max_dim`"):
         NphdIndex(ndim=100)
 
 
 def test_nphd_index_init_rejects_metric():
-    """Test that NphdIndex raises assertion error when metric is provided."""
-    with pytest.raises(AssertionError, match="`metric` is set automatically"):
+    """Test that NphdIndex rejects metric parameter."""
+    with pytest.raises(TypeError, match="`metric` is set automatically"):
         NphdIndex(metric="hamming")
 
 
 def test_nphd_index_init_rejects_dtype():
-    """Test that NphdIndex raises assertion error when dtype is provided."""
-    with pytest.raises(AssertionError, match="`dtype` is set automatically"):
+    """Test that NphdIndex rejects dtype parameter."""
+    with pytest.raises(TypeError, match="`dtype` is set automatically"):
         NphdIndex(dtype="float32")
+
+
+def test_nphd_index_init_rejects_max_dim_too_large():
+    """Test that NphdIndex rejects max_dim > 256."""
+    with pytest.raises(ValueError, match="`max_dim` must be <= 256"):
+        NphdIndex(max_dim=264)
+
+
+def test_nphd_index_init_rejects_max_dim_not_multiple_of_8():
+    """Test that NphdIndex rejects max_dim not a multiple of 8."""
+    with pytest.raises(ValueError, match="`max_dim` must be a multiple of 8"):
+        NphdIndex(max_dim=100)
 
 
 def test_nphd_index_add_and_search():
