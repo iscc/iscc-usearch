@@ -12,7 +12,12 @@ resolution-markers = [
     "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
     "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'",
     "python_full_version < '3.13' and platform_machine == 'ARM64' and sys_platform == 'win32'",
-    "(python_full_version >= '3.14' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.14' and platform_machine == 'x86_64' and sys_platform == 'linux') or (python_full_version >= '3.14' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version >= '3.14' and platform_machine == 'ARM64' and sys_platform == 'win32') or (python_full_version >= '3.14' and sys_platform == 'darwin') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine != 'AMD64' and platform_machine != 'ARM64' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
+    "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+    "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+    "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+    "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'",
+    "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'",
+    "(python_full_version >= '3.15' and platform_machine == 'aarch64' and sys_platform == 'linux') or (python_full_version >= '3.15' and platform_machine == 'x86_64' and sys_platform == 'linux') or (python_full_version >= '3.15' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version >= '3.15' and platform_machine == 'ARM64' and sys_platform == 'win32') or (python_full_version >= '3.15' and sys_platform == 'darwin') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and sys_platform == 'linux') or (platform_machine != 'AMD64' and platform_machine != 'ARM64' and sys_platform == 'win32') or (sys_platform != 'darwin' and sys_platform != 'linux' and sys_platform != 'win32')",
 ]
 
 [[package]]
@@ -190,16 +195,21 @@ dependencies = [
     { name = "fastbloom-rs" },
     { name = "loguru" },
     { name = "numba" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-macosx_10_13_universal2.whl" }, marker = "python_full_version < '3.13' and sys_platform == 'darwin'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_amd64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_arm64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-macosx_10_13_universal2.whl" }, marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_amd64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
-    { name = "usearch", version = "2.23.2", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_arm64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-macosx_10_13_universal2.whl" }, marker = "python_full_version < '3.13' and sys_platform == 'darwin'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_amd64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_arm64.whl" }, marker = "python_full_version < '3.13' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-macosx_10_13_universal2.whl" }, marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_amd64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_arm64.whl" }, marker = "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-macosx_10_15_universal2.whl" }, marker = "python_full_version == '3.14.*' and sys_platform == 'darwin'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }, marker = "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }, marker = "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_amd64.whl" }, marker = "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "usearch", version = "2.23.3", source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_arm64.whl" }, marker = "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
 ]
 
 [package.dev-dependencies]
@@ -220,16 +230,21 @@ requires-dist = [
     { name = "fastbloom-rs", specifier = ">=0.5.10" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "numba", specifier = ">=0.62.1" },
-    { name = "usearch", marker = "python_full_version == '3.12.*' and sys_platform == 'darwin'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-macosx_10_13_universal2.whl" },
-    { name = "usearch", marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-macosx_10_13_universal2.whl" },
-    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_amd64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_amd64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_arm64.whl" },
-    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_arm64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.12.*' and sys_platform == 'darwin'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-macosx_10_13_universal2.whl" },
+    { name = "usearch", marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-macosx_10_13_universal2.whl" },
+    { name = "usearch", marker = "python_full_version == '3.14.*' and sys_platform == 'darwin'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-macosx_10_15_universal2.whl" },
+    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_amd64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_amd64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_amd64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.12.*' and platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_arm64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_arm64.whl" },
+    { name = "usearch", marker = "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'", url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_arm64.whl" },
 ]
 
 [package.metadata.requires-dev]
@@ -865,7 +880,7 @@ name = "tqdm"
 version = "4.67.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "(python_full_version < '3.14' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version < '3.14' and platform_machine == 'ARM64' and sys_platform == 'win32')" },
+    { name = "colorama", marker = "(python_full_version < '3.15' and platform_machine == 'AMD64' and sys_platform == 'win32') or (python_full_version < '3.15' and platform_machine == 'ARM64' and sys_platform == 'win32')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
@@ -898,8 +913,8 @@ wheels = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-macosx_10_13_universal2.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-macosx_10_13_universal2.whl" }
 resolution-markers = [
     "python_full_version < '3.13' and sys_platform == 'darwin'",
 ]
@@ -909,7 +924,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version < '3.13' and sys_platform == 'darwin'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:309318e0418e284da50126377b9ef6fe7a9b93cfad054ee4a056efec5f0f5ee7" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:d314a39a84c728425e8ae98a956a4ff16d1c06a3a6f2f6b9584d0a17b1f3ebea" },
 ]
 
 [package.metadata]
@@ -921,8 +936,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }
 resolution-markers = [
     "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
@@ -932,7 +947,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version < '3.13' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6fc4670c508f0672c1f688cb94810ce1520b4b70e1cacd170b67ef3982b24465" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:13d62d69f18d0c4ed64ab8bc9944f23009d8679ef12ac0aeb627e05b3e0c241b" },
 ]
 
 [package.metadata]
@@ -944,8 +959,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }
 resolution-markers = [
     "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
@@ -955,7 +970,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version < '3.13' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9b46cfea63a4f699be7375390437e303475f5f353a858f5a2d63453c6dcda9d5" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:3697e16ccf614f9610c82a9d2407d29dee05d872760194ac8add32b8b4a889c1" },
 ]
 
 [package.metadata]
@@ -967,8 +982,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_amd64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_amd64.whl" }
 resolution-markers = [
     "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'",
 ]
@@ -977,7 +992,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version < '3.13' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_amd64.whl", hash = "sha256:f7c75c69c846c032b5eacb6bc839738f95407c46298b5996f242e0e0d9a45445" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_amd64.whl", hash = "sha256:7660340930f888b0a1e67a472f4b1224f42300babfe20b725e4660819f20465e" },
 ]
 
 [package.metadata]
@@ -988,8 +1003,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_arm64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_arm64.whl" }
 resolution-markers = [
     "python_full_version < '3.13' and platform_machine == 'ARM64' and sys_platform == 'win32'",
 ]
@@ -998,7 +1013,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version < '3.13' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp312-cp312-win_arm64.whl", hash = "sha256:f344a07e0509857dd3f1abc9ea9f0d3de14adc57ef1cdf9f857d6748a00541b6" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp312-cp312-win_arm64.whl", hash = "sha256:31df1da8bcd8ba8331423fd9947bf5b07cb5286551f92c014c9d9eea5773cd30" },
 ]
 
 [package.metadata]
@@ -1009,8 +1024,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-macosx_10_13_universal2.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-macosx_10_13_universal2.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and sys_platform == 'darwin'",
 ]
@@ -1020,7 +1035,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version == '3.13.*' and sys_platform == 'darwin'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:6c6db2e3fa1823d77168c7082707af66522d0fd499959029e4e0171674c1af58" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:86a711395af3e74a1faec852919bd9a685c0904681f89b73a674e071be890f2f" },
 ]
 
 [package.metadata]
@@ -1032,8 +1047,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
 ]
@@ -1043,7 +1058,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version == '3.13.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:7fc0778ad5f1f37a4ee7e516fd8d35219ca2f89f442aae55320f510efe3958d9" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:856f877eb830e58cb06463065b463c8feb6b2e38e700e10ebd0d7ec7db8db8d9" },
 ]
 
 [package.metadata]
@@ -1055,8 +1070,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
 ]
@@ -1066,7 +1081,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version == '3.13.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8ad2c90bbb6fef9a8d704a4a6753810c7400093da1163d656775cc5e30d1cf25" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d706e0627699c89dbe6f9276f41664f84aa53b547162f2632ad48a203d3535e5" },
 ]
 
 [package.metadata]
@@ -1078,8 +1093,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_amd64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_amd64.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'",
 ]
@@ -1088,7 +1103,7 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version == '3.13.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_amd64.whl", hash = "sha256:62e90f1c434bce4e2977eb173437b6aa188d45bfa737f29369f36748deb7ba5d" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_amd64.whl", hash = "sha256:bc79121809f21788d1a5eef5ce06632d1038a8cb95bb74a0f054934ac5e42200" },
 ]
 
 [package.metadata]
@@ -1099,8 +1114,8 @@ requires-dist = [
 
 [[package]]
 name = "usearch"
-version = "2.23.2"
-source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_arm64.whl" }
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_arm64.whl" }
 resolution-markers = [
     "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'",
 ]
@@ -1109,7 +1124,118 @@ dependencies = [
     { name = "tqdm", marker = "python_full_version == '3.13.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
 ]
 wheels = [
-    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.2-cp313-cp313-win_arm64.whl", hash = "sha256:304c820f7b7a1a90221860d14c4d66284028e1fad06906cbeb4a9c2720078934" },
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp313-cp313-win_arm64.whl", hash = "sha256:6ea77d58e09de65b59a0875adfde5eb375c0886f6fa63aaae64a6be42a75fd78" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "tqdm" },
+]
+
+[[package]]
+name = "usearch"
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-macosx_10_15_universal2.whl" }
+resolution-markers = [
+    "python_full_version == '3.14.*' and sys_platform == 'darwin'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version == '3.14.*' and sys_platform == 'darwin'" },
+    { name = "simsimd", marker = "python_full_version == '3.14.*' and sys_platform == 'darwin'" },
+    { name = "tqdm", marker = "python_full_version == '3.14.*' and sys_platform == 'darwin'" },
+]
+wheels = [
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:7f63254e5f54585ba06e909f069f150936ecffe38c949fd1d23b8cfb8d0856ea" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "simsimd", specifier = ">=6.0.5,<7.0.0" },
+    { name = "tqdm" },
+]
+
+[[package]]
+name = "usearch"
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl" }
+resolution-markers = [
+    "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "simsimd", marker = "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+    { name = "tqdm", marker = "python_full_version == '3.14.*' and platform_machine == 'aarch64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:ec254f1a26caccc12ba1b8a8151fa9707ca51cd9d3bf754c0f33335d0ea42191" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "simsimd", specifier = ">=6.0.5,<7.0.0" },
+    { name = "tqdm" },
+]
+
+[[package]]
+name = "usearch"
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl" }
+resolution-markers = [
+    "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "simsimd", marker = "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+    { name = "tqdm", marker = "python_full_version == '3.14.*' and platform_machine == 'x86_64' and sys_platform == 'linux'" },
+]
+wheels = [
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:e8de05ba687e17f58e69076a02ab75cb06035ff4538ea42d786b365b7d399303" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "simsimd", specifier = ">=6.0.5,<7.0.0" },
+    { name = "tqdm" },
+]
+
+[[package]]
+name = "usearch"
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_amd64.whl" }
+resolution-markers = [
+    "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
+    { name = "tqdm", marker = "python_full_version == '3.14.*' and platform_machine == 'AMD64' and sys_platform == 'win32'" },
+]
+wheels = [
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_amd64.whl", hash = "sha256:d17a42749ef6bac947e1ac2d3dff41fbc7cbfb3f67699e2901ce2245a73a2307" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "numpy" },
+    { name = "tqdm" },
+]
+
+[[package]]
+name = "usearch"
+version = "2.23.3"
+source = { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_arm64.whl" }
+resolution-markers = [
+    "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'",
+]
+dependencies = [
+    { name = "numpy", marker = "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
+    { name = "tqdm", marker = "python_full_version == '3.14.*' and platform_machine == 'ARM64' and sys_platform == 'win32'" },
+]
+wheels = [
+    { url = "https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_arm64.whl", hash = "sha256:794865b70ff392b743c2697e748683807bf430df73bb5d726ed5714c312e6e24" },
 ]
 
 [package.metadata]
