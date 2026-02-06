@@ -49,14 +49,8 @@
   filter: invert(1);
 }
 
-/* Mermaid: override CSS variables for dark mode.
- * Mermaid injects its own <style> inside the SVG using --md-mermaid-* variables.
- * By overriding these variables, we control text/edge colors at the source.
- * Nodes with inline style="fill:#e8f4fd" (light backgrounds) need dark text. */
+/* Mermaid: let the default theme handle light/dark mode.
+ * Only override edge color for softer appearance. */
 [data-md-color-scheme="slate"] .mermaid {
-  --md-mermaid-label-fg-color: #212529;
-  --md-mermaid-node-fg-color: #0054b2;
-  --md-mermaid-node-bg-color: #0054b21a;
-  --md-mermaid-edge-color: #adb5bd;
-  --md-mermaid-label-bg-color: #ffffff;
+  --md-mermaid-edge-color: #6e7681;
 }
