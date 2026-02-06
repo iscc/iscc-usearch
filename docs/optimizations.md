@@ -15,7 +15,7 @@ on macOS, Linux (x86_64, aarch64), and Windows (AMD64, ARM64).
 ### Instant `view()` for Memory-Mapped Indexes
 
 **Motivation:** ISCC indexing uses dozens of memory-mapped shards. Opening a 55-shard
-index (18 GB, 100M vectors) took ~15 seconds because `view()` performs two O(n)
+index (18 GB, 100M vectors) took ~15.3 seconds because `view()` performs two O(n)
 startup operations:
 
 1. **`vectors_lookup_` population** -- Pre-computes a pointer for every vector in
@@ -42,13 +42,13 @@ as `base + stride * slot`.
     `py::gil_scoped_release` (when no progress callback is active), enabling
     thread-based parallelism for loading multiple shards concurrently.
 
-**Benchmark results (stock usearch vs. ISCC fork):**
+**Benchmark results (stock usearch vs. ISCC fork):[^bench]**
 
 | Configuration                              | Stock            | Fork    | Speedup |
 | ------------------------------------------ | ---------------- | ------- | ------- |
-| Single shard (315 MB, 1.8M vectors)        | 0.28 s           | 0.016 s | 17.5x   |
-| 55 shards sequential (18 GB, 100M vectors) | 13.7 s           | 1.28 s  | 10.7x   |
-| 55 shards parallel (8 threads)             | no speedup (GIL) | 0.44 s  | 31x     |
+| Single shard (315 MB, 1.8M vectors)        | 0.31 s           | 0.018 s | 17x     |
+| 55 shards sequential (18 GB, 100M vectors) | 15.3 s           | 1.22 s  | 13x     |
+| 55 shards parallel (8 threads)             | no speedup (GIL) | 0.49 s  | 31x     |
 
 ### Additional Patches
 
@@ -179,7 +179,7 @@ independently and results are merged:
 | 100    | 91.6M   | 15.89 ms          | 63    |
 | 109    | 100M    | 19.47 ms          | 51    |
 
-*256-bit binary vectors, Hamming distance, M=16, efConstruction=32, ef=512, 128 MB shards.*
+*256-bit binary vectors, Hamming distance, M=16, efConstruction=32, ef=512, 128 MB shards.[^latency]*
 
 ### Cold Start
 
@@ -187,9 +187,9 @@ independently and results are merged:
 
 | Configuration                            | Time   |
 | ---------------------------------------- | ------ |
-| 55-shard restore (usearch stock)         | 13.7 s |
-| 55-shard restore (ISCC fork, sequential) | 1.28 s |
-| 55-shard restore (ISCC fork, 8 threads)  | 0.44 s |
+| 55-shard restore (usearch stock)         | 15.3 s |
+| 55-shard restore (ISCC fork, sequential) | 1.22 s |
+| 55-shard restore (ISCC fork, 8 threads)  | 0.49 s |
 
 ### Shard Size Tradeoffs
 
@@ -198,3 +198,10 @@ independently and results are merged:
 | Write-heavy | 1/8 of available RAM   | More shards, consistent add throughput |
 | Read-heavy  | 1/2 of available RAM   | Fewer shards, lower query latency      |
 | Balanced    | 1/4 of available RAM   | Default recommendation                 |
+
+[^bench]: Median of 5 runs after warmup. Stock usearch 2.23.0 (PyPI) vs. ISCC fork
+    2.23.2. Windows 10, Intel i7-7700K, 64 GB RAM, Python 3.12. Benchmark script:
+    `scripts/benchmark_view.py`.
+
+[^latency]: Measured with a 109-shard dataset on the same hardware. Rows up to 55 shards
+    reproduced independently.
