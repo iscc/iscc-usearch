@@ -59,10 +59,6 @@ features = [
     "toc.follow",
 ]
 
-[project.theme.font]
-text = "Readex Pro"
-code = "JetBrains Mono"
-
 [[project.theme.palette]]
 media = "(prefers-color-scheme: light)"
 scheme = "default"

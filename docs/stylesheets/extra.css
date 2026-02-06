@@ -5,9 +5,6 @@
  * palette CSS so our custom colors take precedence.
  */
 
-/* Import Readex Pro from Google Fonts */
-@import url("https://fonts.googleapis.com/css2?family=Readex+Pro:wght@160..700&display=swap");
-
 /* Light mode: override primary (indigo -> ISCC Blue) */
 [data-md-color-primary="indigo"] {
   --md-primary-fg-color: #0054b2;
@@ -44,12 +41,6 @@
 [data-md-color-scheme="slate"][data-md-color-accent="indigo"] {
   --md-accent-fg-color: #4596f5;
   --md-accent-fg-color--transparent: #4596f51a;
-}
-
-/* Typography */
-:root {
-  --md-text-font: "Readex Pro", Arial, sans-serif;
-  --md-code-font: "JetBrains Mono", Consolas, monospace;
 }
 
 /* Dark mode: invert logo so the black logo becomes white */
