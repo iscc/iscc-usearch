@@ -601,6 +601,11 @@ class ShardedIndex:
 
     def _count_single(self, key: int) -> int:
         """Count occurrences of a single key across all shards."""
+        # Fast path: bloom filter says definitely not present
+        if self._use_bloom and self._bloom is not None:
+            if not self._bloom.contains(key):
+                return 0
+
         total = 0
 
         if self._active_shard is not None:
@@ -619,12 +624,27 @@ class ShardedIndex:
 
         total = np.zeros(len(keys_arr), dtype=np.uint64)
 
+        # Fast path: use bloom filter to skip definitely-not-present keys
+        if self._use_bloom and self._bloom is not None:
+            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            maybe_present = np.array(bloom_results, dtype=bool)
+            if not maybe_present.any():
+                return total
+            keys_to_count = keys_arr[maybe_present]
+            indices_to_count = np.where(maybe_present)[0]
+        else:
+            keys_to_count = keys_arr
+            indices_to_count = np.arange(len(keys_arr))
+
+        partial_total = np.zeros(len(keys_to_count), dtype=np.uint64)
+
         if self._active_shard is not None:
-            total += np.asarray(self._active_shard.count(keys_arr), dtype=np.uint64)
+            partial_total += np.asarray(self._active_shard.count(keys_to_count), dtype=np.uint64)
 
         for idx in self._viewed_indexes:
-            total += np.asarray(idx.count(keys_arr), dtype=np.uint64)
+            partial_total += np.asarray(idx.count(keys_to_count), dtype=np.uint64)
 
+        total[indices_to_count] = partial_total
         return total
 
     # === Persistence ===

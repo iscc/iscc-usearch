@@ -67,6 +67,39 @@ def test_count_across_shards_batch(tmp_path):
     assert result[3] == 0
 
 
+def test_count_single_key_bloom_disabled(tmp_path):
+    """Test count with single key when bloom filter is disabled."""
+    index = ShardedIndex(ndim=64, path=tmp_path, bloom_filter=False)
+    index.add(42, np.random.rand(64).astype(np.float32))
+
+    assert index.count(42) == 1
+    assert index.count(999) == 0
+
+
+def test_count_batch_all_nonexistent(tmp_path):
+    """Test batch count when all keys are rejected by bloom filter."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.random.rand(64).astype(np.float32))
+
+    result = index.count([9990, 9991, 9992])
+
+    assert result[0] == 0
+    assert result[1] == 0
+    assert result[2] == 0
+
+
+def test_count_batch_bloom_disabled(tmp_path):
+    """Test batch count when bloom filter is disabled."""
+    index = ShardedIndex(ndim=64, path=tmp_path, bloom_filter=False)
+    index.add([1, 2], np.random.rand(2, 64).astype(np.float32))
+
+    result = index.count([1, 2, 999])
+
+    assert result[0] == 1
+    assert result[1] == 1
+    assert result[2] == 0
+
+
 def test_count_empty_keys_array(tmp_path):
     """Test count with empty keys array returns empty array."""
     index = ShardedIndex(ndim=64, path=tmp_path)

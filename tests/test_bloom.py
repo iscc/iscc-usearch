@@ -222,6 +222,31 @@ def test_bloom_add_batch_empty():
     assert bloom.count == initial_count
 
 
+def test_bloom_contains_batch_empty():
+    """Test contains_batch with empty keys returns empty list."""
+    bloom = ScalableBloomFilter()
+    bloom.add(1)
+    assert bloom.contains_batch([]) == []
+
+
+def test_bloom_contains_batch_multiple_filters():
+    """Test contains_batch works across multiple internal filters."""
+    bloom = ScalableBloomFilter(initial_capacity=100, fpr=0.01, growth_factor=2.0)
+
+    # Add enough to create multiple filters
+    for i in range(250):
+        bloom.add(i)
+    assert bloom.filter_count > 1
+
+    # Batch check keys from different filters and non-existent keys
+    results = bloom.contains_batch([0, 50, 150, 249, 9999])
+    assert results[0] is True  # in first filter
+    assert results[1] is True  # in first filter
+    assert results[2] is True  # in second filter
+    assert results[3] is True  # in latest filter
+    assert results[4] is False  # never added
+
+
 def test_bloom_add_batch_when_filter_exactly_full():
     """Test adding batch when current filter is exactly at capacity."""
     # Create bloom with tiny capacity to force exact-fill scenario

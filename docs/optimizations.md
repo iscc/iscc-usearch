@@ -108,8 +108,9 @@ created.
 
 **Why this helps add throughput:** HNSW graph construction slows as the graph grows
 because each insertion must search a larger neighborhood. A single usearch `Index`
-degrades from ~16K to ~11K vectors/sec over 1M inserts. Sharding resets the curve --
-each shard stays small, maintaining ~13K vectors/sec throughout.
+averages ~11.7K vectors/sec over 1M inserts, with throughput declining as the graph
+grows. Sharding resets the curve -- each shard stays small, maintaining ~13K
+vectors/sec throughout.
 
 | Metric                      | Single Index   | ShardedIndex (32 MB shards) |
 | --------------------------- | -------------- | --------------------------- |
@@ -178,9 +179,11 @@ independently and results are merged:
 | 100    | 91.6M   | 15.89 ms          | 63    |
 | 109    | 100M    | 19.47 ms          | 51    |
 
-*256-bit binary vectors, Hamming distance, M=16, efConstruction=32, ef=512.*
+*256-bit binary vectors, Hamming distance, M=16, efConstruction=32, ef=512, 128 MB shards.*
 
 ### Cold Start
+
+*55 shards (~315 MB each, 18 GB total, 100M vectors).*
 
 | Configuration                            | Time   |
 | ---------------------------------------- | ------ |

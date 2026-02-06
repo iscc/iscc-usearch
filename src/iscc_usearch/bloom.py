@@ -138,10 +138,26 @@ class ScalableBloomFilter:
     def contains_batch(self, keys: Sequence[int]) -> list[bool]:
         """Check if multiple keys might be in the filter.
 
+        Uses native Rust batch operations for throughput. Each filter in the
+        chain is checked via a single batch call, and results are OR-combined.
+
         :param keys: Sequence of integer keys to check
         :return: List of booleans (False=definitely not, True=possibly present)
         """
-        return [self.contains(key) for key in keys]
+        if not keys:
+            return []
+        keys_list = list(keys) if not isinstance(keys, list) else keys
+        # Fast path: single filter (most common case)
+        if len(self._filters) == 1:
+            return self._filters[0].contains_int_batch(keys_list)
+        # Multiple filters: check each (newest first) and OR results
+        result = [False] * len(keys_list)
+        for f in reversed(self._filters):
+            filter_results = f.contains_int_batch(keys_list)
+            for i, maybe in enumerate(filter_results):
+                if maybe:
+                    result[i] = True
+        return result
 
     def clear(self) -> None:
         """Clear all filters and reset to initial state."""
