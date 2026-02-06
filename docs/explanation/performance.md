@@ -10,8 +10,8 @@ sharding, read-mostly access patterns, and large memory-mapped indexes that ISCC
 
 ## Patched USearch fork
 
-Pre-built wheels are hosted at <https://iscc.github.io/usearch/> for Python 3.12+ on macOS, Linux
-(x86_64, aarch64), and Windows (AMD64, ARM64).
+The fork is published on PyPI as [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) with
+pre-built wheels for Python 3.12+ on macOS, Linux (x86_64, aarch64), and Windows (AMD64, ARM64).
 
 ### Instant `view()` for memory-mapped indexes
 
