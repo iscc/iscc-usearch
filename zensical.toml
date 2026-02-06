@@ -126,4 +126,4 @@ alternate_style = true
 combine_header_slug = true
 
 [project.markdown_extensions.pymdownx.snippets]
-auto_append = ["includes/abbreviations.md"]
+auto_append = ["docs/includes/abbreviations.md"]
