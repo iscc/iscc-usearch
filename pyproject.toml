@@ -40,6 +40,7 @@ dev = [
     "pytest-cov>=7.0.0",
     "ruff>=0.14.6",
     "zensical>=0.0.21",
+    "mkdocstrings-python>=1.16.0",
 ]
 
 [tool.ruff]
@@ -79,3 +80,7 @@ invalid-return-type = "warn"
 invalid-assignment = "warn"
 no-matching-overload = "warn"
 possibly-missing-attribute = "warn"
+
+[tool.poe.tasks]
+docs-serve = "zensical serve"
+docs-build = "zensical build"
