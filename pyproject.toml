@@ -1,12 +1,38 @@
 [project]
 name = "iscc-usearch"
 version = "0.1.0"
-description = "A thin wrapper around USearch to support variable length bit-vectors and larger than RAM indexes."
+description = "Scalable approximate nearest neighbor search for variable-length binary bit-vectors using NPHD metric."
 readme = "README.md"
+license = "Apache-2.0"
 authors = [
     { name = "Titusz Pan", email = "tp@py7.de" }
 ]
 requires-python = ">=3.12"
+keywords = [
+    "iscc",
+    "usearch",
+    "nearest-neighbor-search",
+    "similarity-search",
+    "hamming-distance",
+    "binary-vectors",
+    "fingerprinting",
+    "hnsw",
+    "vector-search",
+    "content-identification",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Database :: Database Engines/Servers",
+    "Typing :: Typed",
+]
 dependencies = [
     "numba>=0.62.1",
     "loguru>=0.7.3",
@@ -31,6 +57,13 @@ dependencies = [
     "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_amd64.whl ; sys_platform == 'win32' and platform_machine == 'AMD64' and python_version == '3.14'",
     "usearch @ https://iscc.github.io/usearch/usearch/usearch-2.23.3-cp314-cp314-win_arm64.whl ; sys_platform == 'win32' and platform_machine == 'ARM64' and python_version == '3.14'",
 ]
+
+[project.urls]
+Homepage = "https://iscc.github.io/iscc-usearch/"
+Documentation = "https://iscc.github.io/iscc-usearch/"
+Repository = "https://github.com/iscc/iscc-usearch"
+Changelog = "https://github.com/iscc/iscc-usearch/blob/main/CHANGELOG.md"
+Issues = "https://github.com/iscc/iscc-usearch/issues"
 
 [build-system]
 requires = ["uv_build>=0.9.13,<0.10.0"]
