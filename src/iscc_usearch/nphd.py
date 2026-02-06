@@ -83,6 +83,9 @@ class NphdIndex(Index):
     def __init__(self, max_dim=256, **kwargs):
         # type: (int, Any) -> None
         """Create a new NPHD index."""
+        assert max_dim <= 256, f"`max_dim` must be <= 256 (got {max_dim}); the NPHD metric supports at most 256 bits"
+        assert max_dim % 8 == 0, f"`max_dim` must be a multiple of 8 (got {max_dim})"
+
         self.max_dim = max_dim
         self.max_bytes = max_dim // 8
 
