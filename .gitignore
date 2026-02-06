@@ -29,6 +29,9 @@ site/
 # Type checker cache
 .cache/
 
+# UV cache
+.uv-cache/
+
 # Claude Code
 .claude/
 CLAUDE.local.md
