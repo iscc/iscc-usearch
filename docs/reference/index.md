@@ -1,3 +1,7 @@
+---
+icon: lucide/book-open
+---
+
 # Reference
 
 Technical reference for the `iscc-usearch` public API, auto-generated from source docstrings.

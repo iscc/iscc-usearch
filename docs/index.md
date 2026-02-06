@@ -1,3 +1,7 @@
+---
+icon: lucide/house
+---
+
 # iscc-usearch
 
 [![Tests](https://github.com/iscc/iscc-usearch/actions/workflows/tests.yml/badge.svg)](https://github.com/iscc/iscc-usearch/actions/workflows/tests.yml)

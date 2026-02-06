@@ -1,3 +1,7 @@
+---
+icon: lucide/graduation-cap
+---
+
 # Tutorials
 
 Step-by-step guides that walk you through using `iscc-usearch` from first install to working code.

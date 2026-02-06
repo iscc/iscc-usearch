@@ -1,3 +1,7 @@
+---
+icon: lucide/wrench
+---
+
 # How-to Guides
 
 Task-oriented recipes for common operations. Each guide assumes you are already familiar with the

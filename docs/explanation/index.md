@@ -1,3 +1,7 @@
+---
+icon: lucide/lightbulb
+---
+
 # Explanation
 
 Background material that explains *why* things work the way they do. Read these when you want to

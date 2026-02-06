@@ -1,3 +1,7 @@
+---
+icon: lucide/code
+---
+
 # Development
 
 Information for contributors and maintainers.
