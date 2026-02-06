@@ -41,10 +41,6 @@ graph TD
     B["<b>Step 2:</b> Compare first 2 bytes<br/>a: 0xFF 0x80<br/>b: 0xFF 0x81"] --> C
     C["<b>Step 3:</b> XOR and count bits<br/>0xFF ^ 0xFF = 0x00 → 0 bits<br/>0x80 ^ 0x81 = 0x01 → 1 bit"] --> D
     D["<b>Step 4:</b> Normalize<br/>NPHD = 1 / 16 = 0.0625"]
-    style A fill:#e8f4fd,stroke:#1976d2
-    style B fill:#e8f4fd,stroke:#1976d2
-    style C fill:#e8f4fd,stroke:#1976d2
-    style D fill:#c8e6c9,stroke:#388e3c
 ```
 
 The third byte of **a** (`0x40`) is ignored because **b** is only 2 bytes long.

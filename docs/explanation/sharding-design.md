@@ -57,12 +57,6 @@ graph TD
     AS -->|"No"| VS{"View shards<br/>(iterate)"}
     VS -->|"Found"| RV["Return from view shard"]
     VS -->|"Not found"| NONE2["Return None"]
-
-    style BF fill:#fff3e0,stroke:#f57c00
-    style NONE fill:#ffcdd2,stroke:#d32f2f
-    style NONE2 fill:#ffcdd2,stroke:#d32f2f
-    style RA fill:#c8e6c9,stroke:#388e3c
-    style RV fill:#c8e6c9,stroke:#388e3c
 ```
 
 Without the bloom filter, every key lookup must query each shard sequentially. With the bloom

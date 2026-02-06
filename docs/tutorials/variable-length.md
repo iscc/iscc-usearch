@@ -18,9 +18,6 @@ the full-resolution fingerprint.
 graph LR
     A["64-bit<br/>(8 bytes)"] -->|prefix of| B["128-bit<br/>(16 bytes)"]
     B -->|prefix of| C["256-bit<br/>(32 bytes)"]
-    style A fill:#e8f4fd,stroke:#1976d2
-    style B fill:#e8f4fd,stroke:#1976d2
-    style C fill:#e8f4fd,stroke:#1976d2
 ```
 
 `iscc-usearch` stores all these lengths in a single index and compares them with the

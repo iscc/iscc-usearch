@@ -16,20 +16,18 @@ Every vector is padded to a uniform size before storage. The first byte holds th
 length (in bytes), then the vector data, then zero-padding:
 
 ```mermaid
-graph LR
-    subgraph "Raw vector (3 bytes)"
+flowchart TB
+    subgraph RAW ["Raw vector (3 bytes)"]
+        direction LR
         R1["0xFF"] --- R2["0x80"] --- R3["0x40"]
     end
 
-    subgraph "Padded vector (33 bytes for max_dim=256)"
-        P0["<b>0x03</b><br/>length"] --- P1["0xFF"] --- P2["0x80"] --- P3["0x40"] --- P4["0x00<br/>..."] --- P32["0x00"]
+    subgraph PAD ["Padded to 33 bytes"]
+        direction LR
+        P0["**0x03** length"] --- P1["0xFF"] --- P2["0x80"] --- P3["0x40"] --- P4["0x00 ..."] --- P32["0x00"]
     end
 
-    R3 -->|pad_vectors| P0
-
-    style P0 fill:#fff3e0,stroke:#f57c00
-    style P4 fill:#f5f5f5,stroke:#9e9e9e
-    style P32 fill:#f5f5f5,stroke:#9e9e9e
+    RAW -->|pad_vectors| PAD
 ```
 
 The padded vector is stored in USearch as a `ScalarKind.B1` (binary) vector with
@@ -38,19 +36,18 @@ The padded vector is stored in USearch as a `ScalarKind.B1` (binary) vector with
 On retrieval, `unpad_vectors` reads the length byte and returns only the valid data bytes:
 
 ```mermaid
-graph LR
-    subgraph "Stored (33 bytes)"
-        S0["<b>0x03</b>"] --- S1["0xFF"] --- S2["0x80"] --- S3["0x40"] --- S4["0x00..."]
+flowchart TB
+    subgraph STO ["Stored (33 bytes)"]
+        direction LR
+        S0["**0x03**"] --- S1["0xFF"] --- S2["0x80"] --- S3["0x40"] --- S4["0x00..."]
     end
 
-    subgraph "Returned (3 bytes)"
+    subgraph RET ["Returned (3 bytes)"]
+        direction LR
         O1["0xFF"] --- O2["0x80"] --- O3["0x40"]
     end
 
-    S4 -->|unpad_vectors| O1
-
-    style S0 fill:#fff3e0,stroke:#f57c00
-    style S4 fill:#f5f5f5,stroke:#9e9e9e
+    STO -->|unpad_vectors| RET
 ```
 
 Both `pad_vectors` and `unpad_vectors` are compiled with Numba `@njit(cache=True)` for native speed.
