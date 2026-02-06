@@ -23,20 +23,20 @@ icon: lucide/git-pull-request
 
 ## Running tests
 
-Tests require 100% code coverage. Run the full suite:
+Tests require 100% code coverage. To run the full suite:
 
 ```bash
 uv run pytest
 ```
 
-Run a single test file or function:
+To run a single test file or function:
 
 ```bash
 uv run pytest tests/test_nphd.py
 uv run pytest tests/test_nphd.py::test_nphd_index_add_and_search
 ```
 
-Run with explicit coverage report:
+To generate a coverage report with missing lines:
 
 ```bash
 uv run pytest --cov=iscc_usearch --cov-report=term-missing
@@ -52,7 +52,7 @@ uv run ruff check .
 uv run ruff format .
 ```
 
-Line length is 119 characters. Line endings are LF (configured in `pyproject.toml`).
+The max line length is 119 characters and line endings are LF, both configured in `pyproject.toml`.
 
 ## Type checking
 
@@ -60,7 +60,7 @@ Line length is 119 characters. Line endings are LF (configured in `pyproject.tom
 uv run ty check
 ```
 
-Some usearch-related type warnings are downgraded to warnings in `pyproject.toml` due to usearch's
+Some usearch-related type errors are downgraded to warnings in `pyproject.toml` because usearch has
 incomplete type annotations.
 
 ## Security scanning
@@ -69,11 +69,11 @@ incomplete type annotations.
 uv run bandit -r src/
 ```
 
-`assert` statements are allowed (`B101` is skipped) since they are used for parameter validation.
+`assert` statements are allowed (`B101` is skipped) because the project uses them for parameter validation.
 
 ## Documentation
 
-Build and serve the documentation locally:
+Serve the docs locally with live reload:
 
 ```bash
 uv run poe docs-serve
@@ -85,22 +85,22 @@ Build for deployment:
 uv run poe docs-build
 ```
 
-## Cross-platform requirement
+## Cross-platform support
 
-All code, scripts, and dev tools must work on **Linux**, **macOS**, and **Windows**. Test on
+All code, scripts, and dev tools must work on **Linux**, **macOS**, and **Windows**. Please test on
 multiple platforms when possible.
 
-## The patched usearch fork
+## Patched usearch fork
 
 `iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch) (v2.23.2).
 Pre-built wheels are hosted at <https://iscc.github.io/usearch/> and installed automatically via
 platform-specific dependency specifiers in `pyproject.toml`.
 
-The fork adds:
+The fork includes:
 
-- Instant `view()` for memory-mapped indexes (computed offsets instead of pointer tables).
-- Lazy key reindexing with double-checked locking.
-- GIL release in Python bindings for parallel shard loading.
-- Bug fixes for `get()` on missing keys, `search(count=0)`, and NumPy 2.0 compatibility.
+- Fast `view()` for memory-mapped indexes (computed offsets instead of pointer tables)
+- Lazy key reindexing with double-checked locking
+- GIL release in Python bindings for parallel shard loading
+- Fixes for `get()` on missing keys, `search(count=0)`, and NumPy 2.0 compatibility
 
 See the [Performance explanation](../explanation/performance.md) for details.

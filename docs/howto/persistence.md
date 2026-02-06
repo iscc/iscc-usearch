@@ -4,17 +4,17 @@ icon: lucide/hard-drive
 
 # Persistence
 
-This guide covers saving, loading, and memory-mapping `NphdIndex` instances.
+This guide shows how to save, load, and memory-map `NphdIndex` instances.
 
-## Save an index
+## Save an index to disk
 
 ```python
 index.save("my_index.usearch")
 ```
 
-This writes the full index (HNSW graph + vectors) to a single file.
+This writes the full index (HNSW graph and vectors) to a single file.
 
-## Load an index
+## Load an index from disk
 
 `load()` reads the entire file into RAM:
 
@@ -25,13 +25,13 @@ index = NphdIndex()
 index.load("my_index.usearch")
 ```
 
-Or use the static `restore()` method to create and load in one step:
+You can also use `restore()` to create and load in one step:
 
 ```python
 index = NphdIndex.restore("my_index.usearch")
 ```
 
-## Memory-map an index (view)
+## Memory-map an index
 
 `view()` memory-maps the file for read-only access. The OS pages data in on demand, so startup is
 fast and memory usage stays low:
@@ -51,9 +51,9 @@ index.view("my_index.usearch")
 
     A viewed index is **read-only**. Calling `add()` on a viewed index will fail.
 
-## Restore (auto-detect)
+## Restore with auto-detect
 
-`NphdIndex.restore()` dispatches to `load()` or `view()` based on the `view` parameter:
+`NphdIndex.restore()` calls either `load()` or `view()` based on the `view` parameter:
 
 ```python
 # Full load (default)
@@ -65,15 +65,15 @@ index = NphdIndex.restore("my_index.usearch", view=True)
 
 ## Copy an index
 
-Create an independent in-memory copy with the same configuration and data:
+`copy()` creates an independent in-memory clone with the same configuration and data:
 
 ```python
 copy = index.copy()
 ```
 
-The copy is fully independent -- modifying one does not affect the other.
+The copy is independent. Modifying one does not affect the other.
 
-## When to use which
+## Choosing a method
 
 | Method      | RAM usage | Startup speed | Writable | Use case                       |
 | ----------- | --------- | ------------- | -------- | ------------------------------ |
@@ -84,7 +84,7 @@ The copy is fully independent -- modifying one does not affect the other.
 
 ## Metric restoration
 
-When loading or viewing an index, `NphdIndex` automatically restores the custom NPHD metric.
-USearch's native `load()`/`view()` replaces the compiled metric with the saved metric kind
-(standard Hamming), so `NphdIndex` calls `change_metric()` after every load/view operation. This is
-transparent -- you do not need to do anything special.
+`NphdIndex` automatically restores the custom NPHD metric after loading or viewing an index.
+USearch's native `load()` and `view()` replace the compiled metric with standard Hamming, so
+`NphdIndex` calls `change_metric()` after every load or view operation. This is handled for you
+-- no extra steps required.

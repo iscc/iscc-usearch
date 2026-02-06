@@ -3,15 +3,15 @@ title: Variable-Length
 icon: lucide/ruler
 ---
 
-# Variable-Length Vectors
+# Variable-length vectors
 
 This tutorial builds on the [Getting Started](getting-started.md) guide. You will add vectors of
-different bit-lengths to the same index and observe how the NPHD metric handles prefix matching.
+different bit-lengths to the same index and see how NPHD handles prefix matching.
 
 ## The prefix relationship
 
-In ISCC content fingerprinting, a shorter code is a valid prefix of a longer one. A 64-bit code
-contains the most significant bits; a 128-bit code extends it with more detail; a 256-bit code is
+In ISCC content fingerprinting, a shorter code is always a prefix of a longer one. A 64-bit code
+holds the most significant bits. A 128-bit code extends it with finer detail. A 256-bit code is
 the full-resolution fingerprint.
 
 ```mermaid
@@ -23,10 +23,10 @@ graph LR
     style C fill:#e8f4fd,stroke:#1976d2
 ```
 
-`iscc-usearch` supports storing all these lengths in a single index and comparing them using the
+`iscc-usearch` stores all these lengths in a single index and compares them with the
 Normalized Prefix Hamming Distance (NPHD).
 
-## Create an index and add mixed-length vectors
+## Create an index with mixed-length vectors
 
 ```python
 import numpy as np
@@ -86,8 +86,7 @@ index.add(3, v256)
 
 ## Search with a short query
 
-When you search with a 64-bit query, NPHD compares only the first 64 bits of each stored vector
-(the common prefix):
+A 64-bit query causes NPHD to compare only the first 64 bits of each stored vector:
 
 ```python
 query = v64.copy()
@@ -105,12 +104,12 @@ Key 2: distance = 0.0000
 Key 3: distance = 0.0000
 ```
 
-All three vectors share the same 64-bit prefix, so the distance is `0.0` for all of them.
+All three vectors share the same first 8 bytes, so every distance is `0.0`.
 
 ## Search with a longer query
 
-Now search with the full 128-bit vector. NPHD compares up to 128 bits against vectors that are at
-least 128 bits long, but still only 64 bits against the 64-bit vector:
+Now search with the 128-bit vector. NPHD compares 128 bits against vectors that are at least that
+long, but only 64 bits against the shorter vector:
 
 ```python
 query = v128.copy()
@@ -120,25 +119,25 @@ for key, dist in zip(matches.keys, matches.distances):
     print(f"Key {key}: distance = {dist:.4f}")
 ```
 
-The 128-bit and 256-bit vectors match perfectly over 128 bits, while the 64-bit vector matches
-perfectly over its 64-bit prefix.
+The 128-bit and 256-bit vectors match over all 128 compared bits. The 64-bit vector still
+matches over its shorter prefix.
 
-## Understanding NPHD distances
+## How NPHD distances work
 
-NPHD normalizes the Hamming distance by the length of the shorter vector:
+NPHD divides the Hamming distance by the length of the shorter vector:
 
 ```
 NPHD(a, b) = hamming(prefix_a, prefix_b) / min(bits_a, bits_b)
 ```
 
-Key properties:
+Properties:
 
-- **Range**: Always `[0.0, 1.0]` regardless of vector lengths.
-- **Prefix compatibility**: A 64-bit vector that matches the first 64 bits of a 256-bit vector
-    yields distance `0.0`.
+- **Range**: Always `[0.0, 1.0]`, regardless of vector lengths.
+- **Prefix compatibility**: A 64-bit vector matching the first 64 bits of a 256-bit vector has
+    distance `0.0`.
 - **Symmetry**: `NPHD(a, b) == NPHD(b, a)`.
 
-For a deeper treatment, see the [NPHD Metric explanation](../explanation/nphd-metric.md).
+For the math behind this, see the [NPHD metric explanation](../explanation/nphd-metric.md).
 
 ## Introduce a difference
 
@@ -153,12 +152,11 @@ for key, dist in zip(matches.keys, matches.distances):
     print(f"Key {key}: distance = {dist:.6f}")
 ```
 
-The distance between `v64` and `v64_diff` is `1/64 = 0.015625` -- one bit differs out of 64 total
-bits.
+The distance between `v64` and `v64_diff` is `1/64 = 0.015625` -- one differing bit out of 64.
 
 ## Next steps
 
-- **[NPHD Metric](../explanation/nphd-metric.md)** -- Detailed explanation of the metric's
-    mathematical properties.
+- **[NPHD metric](../explanation/nphd-metric.md)** -- Mathematical properties of the distance
+    function.
 - **[Architecture](../explanation/architecture.md)** -- How variable-length vectors are stored
     internally.

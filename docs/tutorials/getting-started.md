@@ -2,10 +2,10 @@
 icon: lucide/rocket
 ---
 
-# Getting Started
+# Getting started
 
-This tutorial walks you through creating your first `iscc-usearch` index, adding vectors, searching
-for nearest neighbors, and persisting the index to disk.
+Build your first `iscc-usearch` index, add vectors, search for nearest neighbors, and save the
+index to disk.
 
 ## Prerequisites
 
@@ -26,8 +26,8 @@ uv add iscc-usearch
 
 ## Create an index
 
-An `NphdIndex` stores binary bit-vectors up to a given maximum dimension. Create one that supports
-vectors up to 256 bits (32 bytes):
+`NphdIndex` stores binary bit-vectors up to a given maximum dimension. Here we create one that
+accepts vectors up to 256 bits (32 bytes):
 
 ```python
 from iscc_usearch import NphdIndex
@@ -35,13 +35,13 @@ from iscc_usearch import NphdIndex
 index = NphdIndex(max_dim=256)
 ```
 
-The `max_dim` parameter sets the upper bound on vector length in bits. All vectors you add must fit
-within this limit.
+`max_dim` is the upper bound on vector length in bits. Every vector you add must fit within this
+limit.
 
 ## Add vectors
 
-Vectors are NumPy `uint8` arrays where each byte holds 8 bits of the binary code. Every vector
-needs an integer key:
+Vectors are NumPy `uint8` arrays where each byte holds 8 bits of the binary code. Each vector
+requires an integer key:
 
 ```python
 import numpy as np
@@ -52,7 +52,7 @@ index.add(2, np.array([255, 128, 64, 33], dtype=np.uint8))
 index.add(3, np.array([255, 128, 64, 32], dtype=np.uint8))
 ```
 
-You can also add vectors in batch:
+Batch insertion works too:
 
 ```python
 keys = [10, 11, 12]
@@ -70,7 +70,7 @@ index.add(keys, vectors)
 
 ## Search for nearest neighbors
 
-Query the index with a vector to find the closest matches:
+Pass a query vector to find the closest matches:
 
 ```python
 query = np.array([255, 128, 64, 32], dtype=np.uint8)
@@ -80,11 +80,11 @@ print(matches.keys)  # Array of matching keys, sorted by distance
 print(matches.distances)  # Corresponding NPHD distances [0.0, 1.0]
 ```
 
-Distances are in the range `[0.0, 1.0]` -- `0.0` means identical, `1.0` means every bit differs.
+Distances range from `0.0` (identical) to `1.0` (every bit differs).
 
 ## Retrieve vectors by key
 
-Look up previously stored vectors:
+Fetch a stored vector by its key:
 
 ```python
 vector = index.get(1)
@@ -97,7 +97,7 @@ print(missing)  # None
 
 ## Save and reload
 
-Persist the index to a file and restore it later:
+Save the index to a file and load it back later:
 
 ```python
 # Save
@@ -119,8 +119,8 @@ print(matches.keys)
 
 ## Next steps
 
-- **[Variable-Length Vectors](variable-length.md)** -- Mix vectors of different bit-lengths in the
+- **[Variable-length vectors](variable-length.md)** -- Mix vectors of different bit-lengths in the
     same index.
-- **[Persistence](../howto/persistence.md)** -- Learn about `save()`, `load()`, `view()`, and
-    `restore()`.
-- **[API Reference](../reference/api.md)** -- Full API documentation.
+- **[Persistence](../howto/persistence.md)** -- `save()`, `load()`, `view()`, and `restore()`
+    explained.
+- **[API reference](../reference/api.md)** -- Full API documentation.

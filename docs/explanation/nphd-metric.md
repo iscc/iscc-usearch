@@ -7,12 +7,12 @@ icon: lucide/sigma
 
 ## The problem with standard Hamming distance
 
-Standard Hamming distance counts the number of positions where two equal-length bit-strings differ.
-It is undefined for vectors of different lengths -- you cannot compare a 64-bit code with a 256-bit
-code without first deciding what to do about the 192 extra bits.
+Standard Hamming distance counts the positions where two equal-length bit-strings differ. It is
+undefined for vectors of different lengths -- you cannot compare a 64-bit code with a 256-bit code
+without deciding what to do about the 192 extra bits.
 
-Common workarounds (zero-padding, truncation) either introduce artificial differences or discard
-information. Neither preserves the prefix relationship that ISCC codes rely on.
+Common workarounds like zero-padding or truncation either introduce artificial differences or
+discard information. Neither preserves the prefix relationship that ISCC codes rely on.
 
 ## NPHD definition
 
@@ -30,7 +30,7 @@ where $m = \min(\text{len}(a),\; \text{len}(b))$ in bytes.
 
 ## Worked example
 
-Consider two vectors:
+Take two vectors:
 
 - **a** = `[0xFF, 0x80, 0x40]` (3 bytes, 24 bits)
 - **b** = `[0xFF, 0x81]` (2 bytes, 16 bits)
@@ -62,29 +62,29 @@ NPHD satisfies the metric axioms for vectors that share a common prefix hierarch
 
 ## Distance range
 
-NPHD always produces values in $[0.0,\; 1.0]$ regardless of vector lengths:
+NPHD values fall in $[0.0,\; 1.0]$ regardless of vector lengths:
 
 - **0.0** -- The common prefix is identical.
 - **1.0** -- Every bit in the common prefix differs.
 
-This makes distances directly comparable even when the vectors being compared have different lengths.
+Distances are directly comparable even when the vectors have different lengths.
 
 ## Connection to ISCC (ISO 24138)
 
-[ISCC](https://iscc.codes) content codes follow a **prefix-compatible** design: a 64-bit ISCC code
-is the most significant portion of a 256-bit code. Searching a mixed-resolution index with NPHD
-produces meaningful results because the metric respects this nesting.
+[ISCC](https://iscc.codes) content codes are **prefix-compatible**: a 64-bit ISCC code is the most
+significant portion of a 256-bit code. Searching a mixed-resolution index with NPHD works because
+the metric respects this nesting.
 
 ## Connection to Matryoshka Representation Learning
 
-The prefix-compatible design of ISCC codes shares a conceptual foundation with
+ISCC's prefix-compatible design shares a conceptual basis with
 [Matryoshka Representation Learning (MRL)](https://arxiv.org/abs/2205.13147), where embeddings are
 structured so that truncating to a shorter prefix preserves the most important information.
-NPHD is the metric counterpart: it compares representations at any truncation level and produces
-distances that are directly comparable across resolutions.
+NPHD is the metric counterpart: it compares representations at any truncation level with distances
+that are comparable across resolutions.
 
 ## Implementation
 
-The NPHD metric is compiled to a C-callable function via Numba's `@cfunc` decorator and passed
-directly to USearch's C++ core as a function pointer. This avoids Python callback overhead on every
-distance computation during graph traversal. See `iscc_usearch.metrics` for the source.
+The NPHD metric is compiled to a C-callable function with Numba's `@cfunc` decorator and passed to
+USearch's C++ core as a function pointer. This avoids Python callback overhead on every distance
+computation during graph traversal. See `iscc_usearch.metrics` for the source.

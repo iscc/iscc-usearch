@@ -4,7 +4,7 @@ icon: lucide/replace
 
 # Upsert
 
-This guide covers idempotent insert-or-update operations with `upsert()`.
+`upsert()` is an idempotent insert-or-update operation.
 
 ## What upsert does
 
@@ -12,10 +12,9 @@ This guide covers idempotent insert-or-update operations with `upsert()`.
 
 - **Key is new**: The vector is inserted (same as `add()`).
 - **Key exists, vector unchanged**: No operation (skip).
-- **Key exists, vector changed**: The old vector is removed and the new one is inserted.
+- **Key exists, vector changed**: The old vector is removed and the new vector is inserted.
 
-This makes `upsert()` idempotent -- calling it multiple times with the same inputs produces the same
-result.
+`upsert()` is idempotent: calling it multiple times with the same inputs produces the same result.
 
 ## Single upsert
 
@@ -58,8 +57,8 @@ index.upsert(keys, vectors)
 
 ## Variable-length batch upsert
 
-Batch `upsert()` requires all vectors to have the same length (because `NphdIndex.upsert()` pads
-the batch as a 2D array). For variable-length vectors, call `upsert()` individually:
+Batch `upsert()` requires all vectors to have the same length because `NphdIndex.upsert()` pads
+the batch as a 2D array. For variable-length vectors, call `upsert()` one at a time:
 
 ```python
 variable_keys = [10, 11, 12]

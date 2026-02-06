@@ -2,20 +2,19 @@
 icon: lucide/filter
 ---
 
-# Bloom Filters
+# Bloom filters
 
-This guide covers using `ScalableBloomFilter` as a standalone probabilistic data structure for fast
-key existence checks.
+`ScalableBloomFilter` is a standalone probabilistic data structure for fast key existence checks.
 
 ## Overview
 
-A bloom filter answers "is this element in the set?" with:
+A bloom filter answers the question "is this element in the set?" with one of two results:
 
 - **Definitely not** (guaranteed correct)
 - **Probably yes** (small chance of false positive)
 
-`ScalableBloomFilter` chains multiple fixed-size bloom filters to support unlimited growth while
-keeping the false positive rate bounded.
+`ScalableBloomFilter` chains multiple fixed-size bloom filters so the set can grow without bound
+while the false positive rate stays controlled.
 
 ## Create a bloom filter
 
@@ -81,13 +80,11 @@ bloom.clear()  # Reset to initial state (empty, single filter)
 
 ## Scaling behavior
 
-When the current filter reaches capacity, a new filter is automatically added to the chain:
-
-- Each new filter has **double** the capacity of the previous one (configurable via
-    `growth_factor`).
-- Each new filter has a **tighter** false positive rate (geometric series with r=0.5) to keep the
-    overall FPR bounded.
-- Membership checks search newest filter first (recent keys are most likely there).
+When the current filter reaches capacity, a new filter is added to the chain automatically.
+Each new filter has **double** the capacity of the previous one (configurable via `growth_factor`)
+and a **tighter** false positive rate (geometric series with r=0.5) to keep the overall FPR
+controlled. Membership checks search the newest filter first since recent keys are most likely
+there.
 
 ## Choosing parameters
 
@@ -97,8 +94,8 @@ When the current filter reaches capacity, a new filter is automatically added to
 | `fpr`              | 0.01       | Lower = fewer false positives, more memory per element   |
 | `growth_factor`    | 2.0        | Higher = fewer filters, larger memory jumps              |
 
-## Integration with ShardedIndex
+## Integration with sharded indexes
 
 `ShardedIndex` and `ShardedNphdIndex` use `ScalableBloomFilter` internally (enabled by default via
-`bloom_filter=True`) to provide O(1) rejection of non-existent keys in `get()`, `contains()`, and
-`count()` operations. You do not need to manage it manually when using sharded indexes.
+`bloom_filter=True`) for O(1) rejection of non-existent keys in `get()`, `contains()`, and
+`count()`. There is no need to manage the filter manually when using sharded indexes.

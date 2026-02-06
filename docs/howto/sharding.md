@@ -4,15 +4,14 @@ icon: lucide/layers
 
 # Sharding
 
-This guide covers using `ShardedNphdIndex` for datasets that need to scale beyond a single index
-file.
+Use `ShardedNphdIndex` when your dataset needs to scale beyond a single index file.
 
 ## When to use sharding
 
-Switch from `NphdIndex` to `ShardedNphdIndex` when:
+Switch to `ShardedNphdIndex` when:
 
 - Your dataset exceeds available RAM.
-- Insert throughput degrades as the index grows (HNSW graph construction slows with size).
+- Insert throughput degrades as the index grows because HNSW graph construction slows with size.
 - You need append-only storage with transparent shard rotation.
 
 ## Create a sharded index
@@ -32,7 +31,7 @@ The `path` directory is created automatically. Shard files are named `shard_000.
 
 ## Add data
 
-The API is the same as `NphdIndex`. Shard rotation is transparent:
+The API is the same as `NphdIndex`. Shard rotation happens automatically:
 
 ```python
 import numpy as np
@@ -44,12 +43,12 @@ for key, vec in zip(keys, vectors):
     index.add(key, vec)
 ```
 
-When the active shard exceeds `shard_size`, it is saved to disk, reopened in view mode (read-only,
-memory-mapped), and a fresh active shard is created.
+When the active shard exceeds `shard_size`, it is saved to disk and reopened in view mode
+(read-only, memory-mapped). A new active shard is then created.
 
 ## Search across shards
 
-Search queries fan out across all shards automatically:
+Queries run across all shards automatically:
 
 ```python
 query = np.random.randint(0, 256, size=32, dtype=np.uint8)
@@ -69,7 +68,7 @@ index.save()
 index = ShardedNphdIndex(path="./my_shards")
 ```
 
-## Choosing shard_size
+## Choosing `shard_size`
 
 | Workload    | Recommended shard size | Rationale                              |
 | ----------- | ---------------------- | -------------------------------------- |
@@ -77,9 +76,9 @@ index = ShardedNphdIndex(path="./my_shards")
 | Read-heavy  | 1/2 of available RAM   | Fewer shards, lower query latency      |
 | Balanced    | 1/4 of available RAM   | Default recommendation                 |
 
-The default is 1 GB. Smaller shards maintain higher insert throughput but increase query latency
-(more shards to search). See the [Sharding Design](../explanation/sharding-design.md) explanation
-for trade-off details.
+The default is 1 GB. Smaller shards keep insert throughput high but increase query latency because
+more shards need to be searched. See [Sharding design](../explanation/sharding-design.md) for
+trade-off details.
 
 ## Properties
 
@@ -97,9 +96,9 @@ for vec in index.vectors:
 
 ## Limitations
 
-`ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. The following operations are
-not supported:
+`ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. These operations are not
+supported:
 
-- `remove()` -- Cannot delete vectors.
-- `copy()` / `clear()` / `reset()` -- Would require handling multiple files.
-- `join()` / `cluster()` / `pairwise_distance()` -- Not applicable to sharded storage.
+- `remove()` -- vectors cannot be deleted.
+- `copy()` / `clear()` / `reset()` -- would require handling multiple files.
+- `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.

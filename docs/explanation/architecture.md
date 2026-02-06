@@ -7,13 +7,13 @@ icon: lucide/blocks
 ## The core problem
 
 USearch requires all vectors in an index to have the same dimensionality. ISCC codes are
-variable-length (64-bit to 256-bit). `iscc-usearch` bridges this gap through **length-prefixed
-padding** and a **custom metric** that ignores the padding during distance computation.
+variable-length (64-bit to 256-bit). `iscc-usearch` solves this with **length-prefixed padding**
+and a **custom metric** that ignores padding during distance computation.
 
 ## Length-prefixed padding
 
-Every vector stored in USearch is padded to a uniform size. The first byte stores the original
-vector length (in bytes), followed by the vector data, followed by zero-padding:
+Every vector is padded to a uniform size before storage. The first byte holds the original vector
+length (in bytes), then the vector data, then zero-padding:
 
 ```mermaid
 graph LR
@@ -35,7 +35,7 @@ graph LR
 The padded vector is stored in USearch as a `ScalarKind.B1` (binary) vector with
 `ndim = max_dim + 8` bits (the extra 8 bits account for the length byte).
 
-On retrieval, `unpad_vectors` reads the length byte and extracts only the valid data bytes:
+On retrieval, `unpad_vectors` reads the length byte and returns only the valid data bytes:
 
 ```mermaid
 graph LR
@@ -53,35 +53,35 @@ graph LR
     style S4 fill:#f5f5f5,stroke:#9e9e9e
 ```
 
-Both `pad_vectors` and `unpad_vectors` are compiled with Numba `@njit(cache=True)` for native
-performance.
+Both `pad_vectors` and `unpad_vectors` are compiled with Numba `@njit(cache=True)` for native speed.
 
 ## Custom metric restoration
 
 USearch serializes the metric *kind* (e.g., Hamming) but not the custom function pointer. When an
-index is loaded or viewed, USearch replaces the compiled metric with the standard metric for that
-kind. Since NPHD is registered as `MetricKind.Hamming` (the closest built-in kind), a loaded index
-would use standard Hamming distance instead of NPHD.
+index is loaded or viewed, USearch substitutes the standard metric for that kind. Since NPHD is
+registered as `MetricKind.Hamming` (the closest built-in kind), a loaded index would use standard
+Hamming distance instead of NPHD.
 
-`NphdIndex.load()` and `NphdIndex.view()` call `change_metric()` after every load/view to restore
-the NPHD function pointer. This is handled automatically -- callers never need to do this manually.
+`NphdIndex.load()` and `NphdIndex.view()` call `change_metric()` after every load or view to
+restore the NPHD function pointer. This happens automatically and callers never need to do it
+manually.
 
 ## Numba compilation strategy
 
 Two compilation modes are used:
 
-- **`@cfunc`** for the NPHD metric: Produces a C-callable function pointer compatible with
-    USearch's `CompiledMetric` interface. Called from C++ during graph traversal without crossing the
-    Python/C boundary.
+- **`@cfunc`** for the NPHD metric: produces a C-callable function pointer compatible with
+    USearch's `CompiledMetric` interface. USearch calls it from C++ during graph traversal without
+    crossing the Python/C boundary.
 
-- **`@njit(cache=True)`** for padding functions: JIT-compiled with result caching so
-    recompilation cost is paid only once per environment. Operates on NumPy arrays.
+- **`@njit(cache=True)`** for padding functions: JIT-compiled with result caching so recompilation
+    cost is paid only once per environment. Operates on NumPy arrays.
 
 ## Why a thin wrapper
 
-`iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class, adding
-padding at the boundary and restoring the metric after persistence operations. This keeps the
-wrapper small and lets it benefit from upstream USearch improvements without merge conflicts.
+`iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class, adds
+padding at the boundary, and restores the metric after persistence operations. This keeps the
+wrapper small and lets it track upstream USearch improvements without merge conflicts.
 
-The one exception is the [patched usearch fork](performance.md) which modifies USearch's C++ core
-for performance, but those patches are confined to view/load paths and don't change the index format.
+The one exception is the [patched usearch fork](performance.md), which modifies USearch's C++ core
+for performance. Those patches are confined to view/load paths and don't change the index format.

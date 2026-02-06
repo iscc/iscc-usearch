@@ -2,25 +2,25 @@
 icon: lucide/network
 ---
 
-# Sharding Design
+# Sharding design
 
 ## The problem
 
 HNSW graph construction slows as the graph grows because each insertion must search a larger
 neighborhood. A single USearch `Index` averages ~11.7K vectors/sec over 1M inserts, with throughput
-declining throughout. For datasets with hundreds of millions of vectors, this becomes a bottleneck.
+declining throughout. At hundreds of millions of vectors, this is a bottleneck.
 
-Additionally, a single index file must fit in RAM for writes. Memory-mapping helps for reads, but
+A single index file must also fit in RAM for writes. Memory-mapping helps for reads, but
 write-heavy workloads need the full graph loaded.
 
 ## Active shard vs. view shards
 
 `ShardedIndex` splits storage into two tiers:
 
-- **Active shard** (one, fully loaded in RAM): Handles all writes. Stays small for consistent
+- **Active shard** (one, fully loaded in RAM): handles all writes. Stays small for consistent
     insert throughput.
-- **View shards** (zero or more, memory-mapped): Handle reads. Low memory footprint since the OS
-    pages data in on demand.
+- **View shards** (zero or more, memory-mapped): handle reads. Memory footprint is low because the
+    OS pages data in on demand.
 
 ```mermaid
 stateDiagram-v2
@@ -41,12 +41,12 @@ When the active shard exceeds the configured `shard_size`, it is:
 1. Reopened in view mode (memory-mapped, read-only).
 1. Replaced by a fresh, empty active shard.
 
-This rotation resets the HNSW insert curve, maintaining consistent throughput.
+This rotation resets the HNSW insert curve and keeps throughput consistent.
 
 ## Bloom filter integration
 
-`ShardedIndex` maintains a `ScalableBloomFilter` that tracks all keys across all shards. This
-enables O(1) rejection of non-existent keys in `get()`, `contains()`, and `count()`:
+`ShardedIndex` has a `ScalableBloomFilter` that tracks all keys across all shards. This allows
+O(1) rejection of non-existent keys in `get()`, `contains()`, and `count()`:
 
 ```mermaid
 graph TD
@@ -65,18 +65,18 @@ graph TD
     style RV fill:#c8e6c9,stroke:#388e3c
 ```
 
-Without the bloom filter, checking key existence requires querying every shard sequentially. With
-the bloom filter, keys that definitely don't exist are rejected instantly.
+Without the bloom filter, every key lookup must query each shard sequentially. With the bloom
+filter, keys that don't exist are rejected instantly.
 
 The bloom filter is:
 
 - Persisted alongside shard files as `bloom.isbf`.
-- Kept in sync automatically as vectors are added.
-- Rebuilt on demand via `rebuild_bloom()` if corrupted or missing.
+- Updated automatically when vectors are added.
+- Rebuilt via `rebuild_bloom()` if corrupted or missing.
 
 ## Search fan-out
 
-Search queries are executed against all shards in parallel (via USearch's `Indexes` class for view
+Each search query runs against all shards in parallel (via USearch's `Indexes` class for view
 shards), then results are merged:
 
 1. Query all view shards (via `Indexes.search()`).
@@ -93,17 +93,17 @@ shards), then results are merged:
 | Memory usage   | Higher (large active shard in RAM) | Lower (small active shard)         |
 | Disk I/O       | Less frequent rotation             | More frequent rotation             |
 
-The default `shard_size` of 1 GB provides a balance for most workloads. Tune based on your
-read/write ratio -- see [Performance](performance.md) for benchmark data.
+The default `shard_size` of 1 GB is a reasonable starting point for most workloads. Tune it based
+on your read/write ratio -- see [Performance](performance.md) for benchmark data.
 
 ## Append-only design
 
-`ShardedIndex` is append-only by design:
+`ShardedIndex` is append-only:
 
-- No `remove()`: View shards are read-only and USearch doesn't support efficient single-key
+- No `remove()`: view shards are read-only and USearch does not support efficient single-key
     deletion from memory-mapped files.
-- No `clear()` / `reset()`: Would require coordinating across multiple shard files.
-- No `copy()`: Would require deep-copying multiple memory-mapped files.
+- No `clear()` / `reset()`: would require coordinating across multiple shard files.
+- No `copy()`: would require deep-copying multiple memory-mapped files.
 
-This keeps the implementation simple and predictable. For workloads that need updates, use
-`NphdIndex` with `upsert()` (single-file only).
+This keeps the implementation simple and predictable. If you need updates, use `NphdIndex` with
+`upsert()` (single-file only).
