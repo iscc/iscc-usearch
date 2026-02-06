@@ -57,8 +57,8 @@ index.upsert(keys, vectors)
 
 ## Variable-length batch upsert
 
-Batch `upsert()` requires all vectors to have the same length because `NphdIndex.upsert()` pads
-the batch as a 2D array. For variable-length vectors, call `upsert()` one at a time:
+Batch `upsert()` requires all vectors to have the same length because it normalizes inputs to a
+2D array internally. For variable-length vectors, call `upsert()` one at a time:
 
 ```python
 variable_keys = [10, 11, 12]

@@ -70,8 +70,9 @@ The bloom filter is:
 
 ## Search fan-out
 
-Each search query runs against all shards in parallel (via USearch's `Indexes` class for view
-shards), then results are merged:
+Each search query fans out across all shards, then results are merged. View shards are searched
+via USearch's `Indexes` class (which may parallelize internally), and the active shard is
+searched separately. The two result sets are then combined:
 
 1. Query all view shards (via `Indexes.search()`).
 1. Query the active shard.

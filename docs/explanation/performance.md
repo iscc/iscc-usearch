@@ -4,7 +4,7 @@ icon: lucide/gauge
 
 # Performance
 
-`iscc-usearch` depends on a [patched USearch fork](https://github.com/iscc/usearch) (v2.23.2)
+`iscc-usearch` depends on a [patched USearch fork](https://github.com/iscc/usearch) (v2.23.3)
 tuned for ISCC-specific workloads. USearch is a fast ANNS library; the fork adds support for heavy
 sharding, read-mostly access patterns, and large memory-mapped indexes that ISCC indexing requires.
 

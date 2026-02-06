@@ -92,7 +92,7 @@ multiple platforms when possible.
 
 ## Patched usearch fork
 
-`iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch) (v2.23.2).
+`iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch) (v2.23.3).
 Pre-built wheels are hosted at <https://iscc.github.io/usearch/> and installed automatically via
 platform-specific dependency specifiers in `pyproject.toml`.
 

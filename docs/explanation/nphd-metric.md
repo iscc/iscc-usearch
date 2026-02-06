@@ -47,14 +47,41 @@ The third byte of **a** (`0x40`) is ignored because **b** is only 2 bytes long.
 
 ## Metric properties
 
-NPHD satisfies the metric axioms for vectors that share a common prefix hierarchy:
+NPHD satisfies identity, symmetry, and non-negativity. However, the triangle inequality does
+**not** hold in general when vectors have different lengths, because normalization by the shorter
+prefix length can inflate distances between vectors of mismatched lengths.
 
 | Property                | Holds? | Explanation                                                     |
 | ----------------------- | ------ | --------------------------------------------------------------- |
 | **Identity**            | Yes    | $\text{NPHD}(a, a) = 0$ for any vector $a$                      |
 | **Symmetry**            | Yes    | $\text{NPHD}(a, b) = \text{NPHD}(b, a)$ by commutativity of XOR |
-| **Triangle inequality** | Yes    | Follows from normalized Hamming on the shared prefix            |
+| **Triangle inequality** | No     | Violated when vectors have different lengths (see below)        |
 | **Non-negativity**      | Yes    | Hamming distance is always $\geq 0$                             |
+
+### Triangle inequality counterexample
+
+Consider three vectors:
+
+- **a** = `[0x00]` (1 byte)
+- **b** = `[0x00, 0x00]` (2 bytes)
+- **c** = `[0xFF, 0x00]` (2 bytes)
+
+| Pair   | Prefix length | Hamming bits | NPHD             |
+| ------ | ------------- | ------------ | ---------------- |
+| (a, b) | 1 byte        | 0            | 0 / 8 = **0.0**  |
+| (b, c) | 2 bytes       | 8            | 8 / 16 = **0.5** |
+| (a, c) | 1 byte        | 8            | 8 / 8 = **1.0**  |
+
+$\text{NPHD}(a, c) = 1.0 > 0.0 + 0.5 = \text{NPHD}(a, b) + \text{NPHD}(b, c)$
+
+This happens because **a** and **c** are compared over only 1 byte (maximizing the normalized
+distance), while **b** and **c** are compared over 2 bytes (diluting the same 8-bit difference).
+
+!!! note
+
+    NPHD is technically a **semimetric** (or **dissimilarity**), not a full metric. This does not
+    affect approximate nearest neighbor search -- USearch's HNSW graph construction and traversal
+    work correctly with semimetrics, and NPHD produces meaningful similarity rankings in practice.
 
 ## Distance range
 
