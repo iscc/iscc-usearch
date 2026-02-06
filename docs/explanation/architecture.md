@@ -74,6 +74,12 @@ Two compilation modes are used:
 - **`@njit(cache=True)`** for padding functions: JIT-compiled with result caching so recompilation
     cost is paid only once per environment. Operates on NumPy arrays.
 
+## Maximum vector size
+
+The NPHD metric is compiled with a fixed buffer size of 33 bytes (1 length byte + 32 data bytes),
+so `max_dim` is capped at **256 bits**. This matches the maximum resolution of ISCC content
+fingerprints. `NphdIndex` validates this at construction time.
+
 ## Why a thin wrapper
 
 `iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class, adds

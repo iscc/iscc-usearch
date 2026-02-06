@@ -217,8 +217,8 @@ results are merged:
 The defaults work well for most workloads. Increase `expansion_search` if recall is too low;
 increase `connectivity` for better recall at the cost of memory.
 
-[^bench]: Median of 5 runs after warmup. Stock usearch 2.23.0 (PyPI) vs. ISCC fork 2.23.2.
-    Windows 10, Intel i7-7700K, 64 GB RAM, Python 3.12.
+[^bench]: Median of 5 runs after warmup. Stock usearch 2.23.0 (PyPI) vs. ISCC fork 2.23.2
+    (current fork is 2.23.3). Windows 10, Intel i7-7700K, 64 GB RAM, Python 3.12.
 
 [^bloom]: Median of 2,000 iterations per operation. 5,000 vectors/shard, 256D float32. Same
     hardware as above. Reproducible via `uv run python scripts/benchmark_bloom_vs_native.py`.

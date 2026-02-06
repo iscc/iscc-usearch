@@ -1,4 +1,5 @@
 *[ANNS]: Approximate Nearest Neighbor Search
+*[FPR]: False Positive Rate
 *[HNSW]: Hierarchical Navigable Small World
 *[ISCC]: International Standard Content Code (ISO 24138)
 *[JIT]: Just-In-Time compilation
