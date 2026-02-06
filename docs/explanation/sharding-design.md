@@ -1,3 +1,7 @@
+---
+icon: lucide/network
+---
+
 # Sharding Design
 
 ## The problem

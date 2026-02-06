@@ -1,3 +1,7 @@
+---
+icon: lucide/layers
+---
+
 # Sharding
 
 This guide covers using `ShardedNphdIndex` for datasets that need to scale beyond a single index

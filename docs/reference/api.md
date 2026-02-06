@@ -1,3 +1,7 @@
+---
+icon: lucide/book-open
+---
+
 # API Reference
 
 Auto-generated documentation for all public classes in `iscc-usearch`.

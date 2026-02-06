@@ -1,3 +1,7 @@
+---
+icon: lucide/hard-drive
+---
+
 # Persistence
 
 This guide covers saving, loading, and memory-mapping `NphdIndex` instances.

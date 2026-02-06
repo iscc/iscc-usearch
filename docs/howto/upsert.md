@@ -1,3 +1,7 @@
+---
+icon: lucide/replace
+---
+
 # Upsert
 
 This guide covers idempotent insert-or-update operations with `upsert()`.

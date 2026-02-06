@@ -1,3 +1,7 @@
+---
+icon: lucide/rocket
+---
+
 # Getting Started
 
 This tutorial walks you through creating your first `iscc-usearch` index, adding vectors, searching

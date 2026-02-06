@@ -1,3 +1,8 @@
+---
+title: NPHD Metric
+icon: lucide/sigma
+---
+
 # Normalized Prefix Hamming Distance (NPHD)
 
 ## The problem with standard Hamming distance

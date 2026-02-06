@@ -1,3 +1,7 @@
+---
+icon: lucide/gauge
+---
+
 # Performance
 
 `iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch) (v2.23.2) that

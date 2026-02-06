@@ -5,7 +5,7 @@ site_author = "Titusz Pan"
 site_url = "https://iscc.github.io/iscc-usearch/"
 repo_url = "https://github.com/iscc/iscc-usearch"
 repo_name = "iscc/iscc-usearch"
-copyright = "Copyright &copy; 2025 ISCC Foundation"
+copyright = "Copyright &copy; 2025-2026 ISCC Foundation"
 extra_css = ["stylesheets/extra.css"]
 extra_javascript = [
     { path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", async = true },
@@ -14,30 +14,25 @@ extra_javascript = [
 nav = [
     "index.md",
     { "Tutorials" = [
-        "tutorials/index.md",
         "tutorials/getting-started.md",
         "tutorials/variable-length.md",
     ]},
     { "How-to Guides" = [
-        "howto/index.md",
         "howto/persistence.md",
         "howto/sharding.md",
         "howto/upsert.md",
         "howto/bloom-filters.md",
     ]},
     { "Explanation" = [
-        "explanation/index.md",
         "explanation/nphd-metric.md",
         "explanation/architecture.md",
         "explanation/sharding-design.md",
         "explanation/performance.md",
     ]},
     { "Reference" = [
-        "reference/index.md",
         "reference/api.md",
     ]},
     { "Development" = [
-        "development/index.md",
         "development/contributing.md",
     ]},
 ]
@@ -50,7 +45,6 @@ features = [
     "content.code.copy",
     "content.tabs.link",
     "navigation.footer",
-    "navigation.indexes",
     "navigation.instant",
     "navigation.instant.prefetch",
     "navigation.expand",

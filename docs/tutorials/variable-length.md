@@ -1,3 +1,8 @@
+---
+title: Variable-Length
+icon: lucide/ruler
+---
+
 # Variable-Length Vectors
 
 This tutorial builds on the [Getting Started](getting-started.md) guide. You will add vectors of

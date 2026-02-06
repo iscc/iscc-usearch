@@ -1,3 +1,7 @@
+---
+icon: lucide/filter
+---
+
 # Bloom Filters
 
 This guide covers using `ScalableBloomFilter` as a standalone probabilistic data structure for fast

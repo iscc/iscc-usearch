@@ -25,23 +25,23 @@ pip install iscc-usearch
 
 <div class="grid cards" markdown>
 
-- **[Tutorials](tutorials/index.md)** -- Learn the basics
+- **[Tutorials](tutorials/getting-started.md)** -- Learn the basics
 
     Step-by-step guides that take you from installation to working code.
 
-- **[How-to Guides](howto/index.md)** -- Solve specific problems
+- **[How-to Guides](howto/persistence.md)** -- Solve specific problems
 
     Recipes for persistence, sharding, upsert, and bloom filters.
 
-- **[Explanation](explanation/index.md)** -- Understand the design
+- **[Explanation](explanation/nphd-metric.md)** -- Understand the design
 
     Background on NPHD, architecture, sharding, and performance.
 
-- **[Reference](reference/index.md)** -- API details
+- **[Reference](reference/api.md)** -- API details
 
     Auto-generated API documentation for all public classes.
 
-- **[Development](development/index.md)** -- Contribute
+- **[Development](development/contributing.md)** -- Contribute
 
     Dev setup, testing, and contribution guidelines.
 
