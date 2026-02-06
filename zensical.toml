@@ -2,7 +2,7 @@
 site_name = "iscc-usearch"
 site_description = "Scalable approximate nearest neighbor search for variable-length binary bit-vectors."
 site_author = "Titusz Pan"
-site_url = "https://iscc.github.io/iscc-usearch/"
+site_url = "https://usearch.iscc.codes/"
 repo_url = "https://github.com/iscc/iscc-usearch"
 repo_name = "iscc/iscc-usearch"
 copyright = "Copyright &copy; 2025-2026 ISCC Foundation"
@@ -42,12 +42,13 @@ language = "en"
 logo = "assets/logo_light.png"
 favicon = "assets/favicon.png"
 features = [
+    "content.action.edit",
+    "content.code.annotate",
     "content.code.copy",
-    "content.tabs.link",
-    "navigation.footer",
-    "navigation.instant",
-    "navigation.instant.prefetch",
+    "content.tooltips",
+    "header.autohide",
     "navigation.expand",
+    "navigation.footer",
     "navigation.sections",
     "navigation.top",
     "navigation.tracking",
@@ -81,3 +82,48 @@ heading_level = 2
 merge_init_into_class = true
 show_signature_annotations = true
 separate_signature = true
+
+[project.markdown_extensions]
+abbr = {}
+admonition = {}
+attr_list = {}
+def_list = {}
+footnotes = {}
+md_in_html = {}
+
+[project.markdown_extensions.toc]
+permalink = true
+
+[project.markdown_extensions.pymdownx]
+betterem = {}
+caret = {}
+details = {}
+inlinehilite = {}
+keys = {}
+magiclink = {}
+mark = {}
+smartsymbols = {}
+tasklist = { custom_checkbox = true }
+tilde = {}
+
+[project.markdown_extensions.pymdownx.emoji]
+emoji_generator = "zensical.extensions.emoji.to_svg"
+emoji_index = "zensical.extensions.emoji.twemoji"
+
+[project.markdown_extensions.pymdownx.arithmatex]
+generic = true
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.superfences]
+custom_fences = [{ name = "mermaid", class = "mermaid" }]
+
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+combine_header_slug = true
+
+[project.markdown_extensions.pymdownx.snippets]
+auto_append = ["includes/abbreviations.md"]
