@@ -26,6 +26,9 @@ notes/
 # Documentation build output
 site/
 
+# Type checker cache
+.cache/
+
 # Claude Code
 .claude/
 CLAUDE.local.md
