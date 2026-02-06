@@ -6,6 +6,10 @@ site_url = "https://iscc.github.io/iscc-usearch/"
 repo_url = "https://github.com/iscc/iscc-usearch"
 repo_name = "iscc/iscc-usearch"
 copyright = "Copyright &copy; 2025 ISCC Foundation"
+extra_css = ["stylesheets/extra.css"]
+extra_javascript = [
+    { path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", async = true },
+]
 
 nav = [
     "index.md",
@@ -40,6 +44,8 @@ nav = [
 
 [project.theme]
 language = "en"
+logo = "assets/logo_light.png"
+favicon = "assets/favicon.png"
 features = [
     "content.code.copy",
     "content.tabs.link",
@@ -53,18 +59,18 @@ features = [
     "toc.follow",
 ]
 
+[project.theme.font]
+text = "Readex Pro"
+code = "JetBrains Mono"
+
 [[project.theme.palette]]
 media = "(prefers-color-scheme: light)"
 scheme = "default"
-primary = "indigo"
-accent = "amber"
 toggle = { icon = "lucide/sun", name = "Switch to dark mode" }
 
 [[project.theme.palette]]
 media = "(prefers-color-scheme: dark)"
 scheme = "slate"
-primary = "indigo"
-accent = "amber"
 toggle = { icon = "lucide/moon", name = "Switch to light mode" }
 
 [project.plugins.mkdocstrings]

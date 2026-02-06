@@ -1,0 +1,71 @@
+/* ISCC Foundation Brand Colors
+ *
+ * Override palette attribute selectors that Zensical sets by default.
+ * The [data-md-color-*] selectors match the specificity of the built-in
+ * palette CSS so our custom colors take precedence.
+ */
+
+/* Import Readex Pro from Google Fonts */
+@import url("https://fonts.googleapis.com/css2?family=Readex+Pro:wght@160..700&display=swap");
+
+/* Light mode: override primary (indigo -> ISCC Blue) */
+[data-md-color-primary="indigo"] {
+  --md-primary-fg-color: #0054b2;
+  --md-primary-fg-color--light: #4596f5;
+  --md-primary-fg-color--dark: #123663;
+  --md-primary-bg-color: #ffffff;
+  --md-primary-bg-color--light: #ffffffb3;
+}
+
+/* Light mode: override accent (indigo -> ISCC Blue) */
+[data-md-color-accent="indigo"] {
+  --md-accent-fg-color: #0054b2;
+  --md-accent-fg-color--transparent: #0054b21a;
+  --md-accent-bg-color: #ffffff;
+  --md-accent-bg-color--light: #ffffffb3;
+}
+
+/* Link color for light mode */
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #0054b2;
+}
+
+/* Dark mode: override primary */
+[data-md-color-scheme="slate"][data-md-color-primary="indigo"] {
+  --md-primary-fg-color: #4596f5;
+  --md-primary-fg-color--light: #7ac2f7;
+  --md-primary-fg-color--dark: #0054b2;
+  --md-primary-bg-color: #123663;
+  --md-primary-bg-color--light: #12366380;
+  --md-typeset-a-color: #4596f5;
+}
+
+/* Dark mode: override accent */
+[data-md-color-scheme="slate"][data-md-color-accent="indigo"] {
+  --md-accent-fg-color: #4596f5;
+  --md-accent-fg-color--transparent: #4596f51a;
+}
+
+/* Typography */
+:root {
+  --md-text-font: "Readex Pro", Arial, sans-serif;
+  --md-code-font: "JetBrains Mono", Consolas, monospace;
+}
+
+/* Dark mode: invert logo so the black logo becomes white */
+[data-md-color-scheme="slate"] .md-header__button.md-logo img,
+[data-md-color-scheme="slate"] .md-nav__button.md-logo img {
+  filter: invert(1);
+}
+
+/* Mermaid: override CSS variables for dark mode.
+ * Mermaid injects its own <style> inside the SVG using --md-mermaid-* variables.
+ * By overriding these variables, we control text/edge colors at the source.
+ * Nodes with inline style="fill:#e8f4fd" (light backgrounds) need dark text. */
+[data-md-color-scheme="slate"] .mermaid {
+  --md-mermaid-label-fg-color: #212529;
+  --md-mermaid-node-fg-color: #0054b2;
+  --md-mermaid-node-bg-color: #0054b21a;
+  --md-mermaid-edge-color: #adb5bd;
+  --md-mermaid-label-bg-color: #ffffff;
+}
