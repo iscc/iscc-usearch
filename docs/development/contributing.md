@@ -96,11 +96,18 @@ multiple platforms when possible.
 published on PyPI as [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) and installed
 automatically as a regular dependency.
 
-The fork includes:
+Each patch is maintained on a separate branch to facilitate upstream merging:
 
-- Fast `view()` for memory-mapped indexes (computed offsets instead of pointer tables)
-- Lazy key reindexing with double-checked locking
-- GIL release in Python bindings for parallel shard loading
-- Fixes for `get()` on missing keys, `search(count=0)`, and NumPy 2.0 compatibility
+- [`fix-view-overhead`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-view-overhead) —
+    Fast `view()` with computed offsets, lazy key reindexing, and GIL release for parallel shard loading
+- [`patch-index-get`](https://github.com/iscc/usearch/compare/unum-cloud:main...patch-index-get) —
+    Return `None` for non-existent keys in `Index.get()`
+- [`fix-search-count-zero`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-search-count-zero) —
+    Validate search count parameter to prevent segfault
+- [`fix-serialized-length`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-serialized-length) —
+    Fix `serialized_length` pybind11 default argument binding
+- [`fix-array-copy-keyword`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-array-copy-keyword) —
+    Accept `copy` keyword in `IndexedKeys.__array__` for NumPy 2.0
 
-See the [Performance explanation](../explanation/performance.md) for details.
+See the [Performance explanation](../explanation/performance.md) for details on the performance
+patches.
