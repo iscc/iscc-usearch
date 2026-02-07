@@ -26,8 +26,18 @@ index = ShardedNphdIndex(
 )
 ```
 
-The `path` directory is created automatically. Shard files are named `shard_000.usearch`,
-`shard_001.usearch`, etc.
+The `path` directory is created automatically. After adding data and saving, the directory looks
+like this:
+
+```
+my_shards/
+    shard_000.usearch   # view shard (memory-mapped, read-only)
+    shard_001.usearch   # view shard (memory-mapped, read-only)
+    shard_002.usearch   # active shard (RAM, read-write)
+    bloom.isbf          # bloom filter state
+```
+
+Completed shards are immutable. The highest-numbered shard is the active shard.
 
 ## Add data
 
@@ -96,9 +106,15 @@ for vec in index.vectors:
 
 ## Limitations
 
-`ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. These operations are not
-supported:
+`ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. The following operations
+raise `NotImplementedError`:
 
 - `remove()` -- vectors cannot be deleted.
 - `copy()` / `clear()` / `reset()` -- would require handling multiple files.
 - `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.
+
+!!! note "Required parameters"
+
+    When creating a new sharded index (no existing shards on disk), `max_dim` is required.
+    Omitting it raises `ValueError`. When reopening an existing index, `max_dim` is auto-detected
+    from the shard metadata.

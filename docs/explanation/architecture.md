@@ -80,6 +80,161 @@ The NPHD metric is compiled with a fixed buffer size of 33 bytes (1 length byte 
 so `max_dim` is capped at **256 bits**. This matches the maximum resolution of ISCC content
 fingerprints. `NphdIndex` validates this at construction time.
 
+## Index class hierarchy
+
+`iscc-usearch` provides four index classes. Two are single-file, two are sharded:
+
+```mermaid
+classDiagram
+    direction TB
+    class usearch_Index ["usearch.Index"] {
+        +add()
+        +search()
+        +get()
+        +save() / load() / view()
+    }
+
+    class Index {
+        +upsert()
+    }
+
+    class NphdIndex {
+        +max_dim
+        +add() pad vectors
+        +get() unpad vectors
+        +search() pad query
+        +restore()
+    }
+
+    class ShardedIndex {
+        +path
+        +shard_size
+        +bloom filter
+        +add() auto-rotate
+        +search() fan-out + merge
+        +save() / reopen
+    }
+
+    class ShardedNphdIndex {
+        +max_dim
+        +add() pad vectors
+        +get() unpad vectors
+        +search() pad query
+    }
+
+    usearch_Index <|-- Index : extends
+    Index <|-- NphdIndex : extends
+    ShardedIndex <|-- ShardedNphdIndex : extends
+```
+
+`NphdIndex` inherits from `Index` (which extends USearch's `Index`) and adds padding and the NPHD
+metric. `ShardedIndex` is a standalone composition-based class that manages multiple USearch indexes
+as shards. `ShardedNphdIndex` extends `ShardedIndex` with variable-length vector support and NPHD.
+
+### Choosing an index class
+
+| Class              | Single file | Variable length | Sharding | Upsert | Use case                             |
+| ------------------ | ----------- | --------------- | -------- | ------ | ------------------------------------ |
+| `Index`            | yes         | no              | no       | yes    | Fixed-length vectors, small datasets |
+| `NphdIndex`        | yes         | yes             | no       | yes    | ISCC codes, fits in RAM              |
+| `ShardedIndex`     | no          | no              | yes      | no     | Fixed-length vectors, large scale    |
+| `ShardedNphdIndex` | no          | yes             | yes      | no     | ISCC codes, large scale (production) |
+
+For most ISCC workloads, use **`NphdIndex`** for datasets that fit in RAM, or
+**`ShardedNphdIndex`** for datasets that exceed RAM or need consistent insert throughput.
+
+## Data flow
+
+### Write path (add)
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Idx as NphdIndex
+    participant Pad as pad_vectors (@njit)
+    participant USearch as USearch Index
+
+    App->>Idx: add(key, vector)
+    Idx->>Pad: pad vector (prepend length byte, zero-fill)
+    Pad-->>Idx: padded vector (max_dim + 8 bits)
+    Idx->>USearch: add(key, padded_vector)
+    USearch-->>Idx: HNSW graph updated
+    Idx-->>App: done
+```
+
+For `ShardedNphdIndex`, the write path adds bloom filter updates and shard rotation:
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Idx as ShardedNphdIndex
+    participant Pad as pad_vectors (@njit)
+    participant Bloom as ScalableBloomFilter
+    participant Active as Active Shard (RAM)
+    participant Disk as Disk
+
+    App->>Idx: add(key, vector)
+    Idx->>Pad: pad vector
+    Pad-->>Idx: padded vector
+    Idx->>Bloom: add(key)
+    Idx->>Active: add(key, padded_vector)
+
+    alt active shard exceeds shard_size
+        Active->>Disk: save shard_NNN.usearch
+        Disk-->>Active: reopen as memory-mapped view
+        Note over Active: create fresh active shard
+    end
+
+    Idx-->>App: done
+```
+
+### Read path (search)
+
+```mermaid
+sequenceDiagram
+    participant App as Application
+    participant Idx as ShardedNphdIndex
+    participant Pad as pad_vectors (@njit)
+    participant Active as Active Shard
+    participant Views as View Shards (mmap)
+    participant NPHD as NPHD Metric (@cfunc)
+
+    App->>Idx: search(query, count)
+    Idx->>Pad: pad query
+    Pad-->>Idx: padded query
+
+    par search all shards
+        Idx->>Active: search(padded_query)
+        Active->>NPHD: distance computations
+        NPHD-->>Active: distances [0.0, 1.0]
+        Active-->>Idx: shard results
+    and
+        Idx->>Views: search(padded_query) on each view
+        Views->>NPHD: distance computations
+        NPHD-->>Views: distances [0.0, 1.0]
+        Views-->>Idx: shard results
+    end
+
+    Idx->>Idx: merge results (argsort, top-k)
+    Idx-->>App: matches (keys + distances)
+```
+
+## Concurrency model
+
+`iscc-usearch` is designed for **single-process** access. The underlying `.usearch` files have no
+file locking or multi-process coordination.
+
+!!! warning
+
+    Running multiple processes against the same index files may corrupt data.
+
+Within a single process, use `async`/`await` for concurrent connections (e.g., serving search
+queries from an async web framework). The index objects themselves are not thread-safe -- guard
+concurrent access with a lock if using threads.
+
+For sharded indexes, shard rotation (save + reopen) is not atomic. Concurrent reads during rotation
+are safe because completed view shards are immutable, but concurrent writes must be serialized.
+
 ## Why a thin wrapper
 
 `iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class, adds

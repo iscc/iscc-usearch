@@ -16,6 +16,7 @@ nav = [
     { "Tutorials" = [
         "tutorials/getting-started.md",
         "tutorials/variable-length.md",
+        "tutorials/scaling-up.md",
     ]},
     { "How-to Guides" = [
         "howto/persistence.md",

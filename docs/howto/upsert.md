@@ -83,9 +83,11 @@ for key, vec in zip(variable_keys, variable_vecs):
 
 !!! note
 
-    `upsert()` requires explicit keys. Auto-generated keys (`keys=None`) are not supported.
+    `upsert()` requires explicit keys. Passing `keys=None` raises `ValueError`.
 
 !!! note
 
     `upsert()` is available on `NphdIndex` only. `ShardedNphdIndex` does not support `upsert()`
     because it uses an append-only design without `remove()`.
+
+    The number of keys and vectors must match, or `ValueError` is raised.

@@ -24,6 +24,25 @@ Or with `uv`:
 uv add iscc-usearch
 ```
 
+### Verify the installation
+
+```python
+import iscc_usearch
+
+print(iscc_usearch.__version__)
+```
+
+### What gets installed
+
+`iscc-usearch` brings in four runtime dependencies:
+
+| Dependency                                               | Purpose                                                                            |
+| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) | Patched USearch fork with fast `view()` and GIL release for parallel shard loading |
+| [`numba`](https://numba.pydata.org/)                     | JIT compilation for the NPHD metric and vector padding functions                   |
+| [`fastbloom-rs`](https://pypi.org/project/fastbloom-rs/) | Rust-based bloom filter for O(1) key rejection in sharded indexes                  |
+| [`loguru`](https://loguru.readthedocs.io/)               | Structured logging                                                                 |
+
 ## Create an index
 
 `NphdIndex` stores binary bit-vectors up to a given maximum dimension. Here we create one that
@@ -37,6 +56,11 @@ index = NphdIndex(max_dim=256)
 
 `max_dim` is the upper bound on vector length in bits. Every vector you add must fit within this
 limit.
+
+!!! note "Constraints on `max_dim`"
+
+    `max_dim` must be a multiple of 8 and at most 256 (the maximum resolution of ISCC content
+    fingerprints). The constructor raises `ValueError` if either constraint is violated.
 
 ## Add vectors
 
@@ -121,6 +145,7 @@ print(matches.keys)
 
 - **[Variable-length vectors](variable-length.md)** -- Mix vectors of different bit-lengths in the
     same index.
+- **[Scaling up](scaling-up.md)** -- Use `ShardedNphdIndex` for datasets that exceed RAM.
 - **[Persistence](../howto/persistence.md)** -- `save()`, `load()`, `view()`, and `restore()`
     explained.
 - **[API reference](../reference/api.md)** -- Full API documentation.

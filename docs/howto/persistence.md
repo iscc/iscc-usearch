@@ -49,7 +49,8 @@ index.view("my_index.usearch")
 
 !!! warning
 
-    A viewed index is **read-only**. Calling `add()` on a viewed index will fail.
+    A viewed index is **read-only**. Calling `add()` on a viewed index raises an error from
+    USearch's C++ core.
 
 ## Restore with auto-detect
 
