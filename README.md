@@ -5,46 +5,31 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iscc/iscc-usearch)
 
-**Scalable approximate nearest neighbor search for variable-length binary bit-vectors.**
+**Larger-than-RAM HNSW indexes with incremental writes, and variable-length binary vector search.**
 
-`iscc-usearch` extends [USearch](https://github.com/unum-cloud/usearch) with capabilities
-purpose-built for [ISCC](https://iscc.codes) (ISO 24138) content fingerprints: indexing
-binary vectors of mixed bit-lengths in a single index, and scaling beyond available RAM through
-transparent sharding.
+`iscc-usearch` extends [USearch](https://github.com/unum-cloud/usearch) with two independent
+capabilities:
 
-## Why not plain USearch?
+![ShardedIndex and NPHD architecture overview](https://raw.githubusercontent.com/iscc/iscc-usearch/main/docs/assets/sharded-index-architecture.avif)
 
-USearch is a fast, general-purpose vector index -- but it assumes all vectors have the same
-dimensionality, and a single index must fit in memory for writes. ISCC codes break both
-assumptions:
+**Sharded HNSW indexes** (`ShardedIndex`) keep a single active shard in RAM for writes while
+completed shards are memory-mapped for reads. Works with any vector type and metric USearch
+supports. Insert throughput stays consistent and memory stays bounded as the index grows to
+hundreds of millions of vectors.
 
-- **Variable-length codes.** An ISCC content fingerprint can be 64, 128, or 256 bits depending
-    on resolution. Shorter codes are prefixes of longer ones -- a design shared with
-    [Matryoshka Representation Learning](https://arxiv.org/abs/2205.13147). A useful index must
-    store and compare all resolutions together.
-
-- **Large-scale collections.** Real-world content registries grow to hundreds of millions of
-    fingerprints. Write throughput in HNSW graphs degrades as the graph grows, and the full graph
-    must be loaded into RAM for inserts.
-
-`iscc-usearch` solves both problems with two core additions:
-
-**Normalized Prefix Hamming Distance (NPHD)** compares only the bits that both vectors share and
-normalizes the result to `[0.0, 1.0]`. A 64-bit query can find its nearest neighbors among
-256-bit vectors -- distances remain comparable across resolutions.
-
-**Transparent sharding** keeps a single active shard in RAM for writes while completed shards are
-memory-mapped for reads. This maintains consistent insert throughput regardless of index size and
-keeps the memory footprint bounded.
+**Normalized Prefix Hamming Distance** (`NphdIndex`, `ShardedNphdIndex`) compares binary vectors
+of mixed bit-lengths -- a 64-bit query finds nearest neighbors among 256-bit vectors with
+comparable distances. Purpose-built for [ISCC](https://iscc.codes) (ISO 24138) content
+fingerprints, also applicable to [Matryoshka embeddings](https://arxiv.org/abs/2205.13147),
+perceptual hashes, and locality-sensitive hashing.
 
 ## Which index class?
 
-| Class              | Variable length | Sharding | Upsert | Use when...                                               |
-| ------------------ | --------------- | -------- | ------ | --------------------------------------------------------- |
-| `NphdIndex`        | yes             | no       | yes    | Dataset fits in RAM                                       |
-| `ShardedNphdIndex` | yes             | yes      | no     | Dataset exceeds RAM or needs consistent insert throughput |
-
-Both support 64/128/256-bit ISCC codes in the same index.
+| Class              | Vector type | Variable length | Sharding | Upsert | Use when...                         |
+| ------------------ | ----------- | --------------- | -------- | ------ | ----------------------------------- |
+| `ShardedIndex`     | any         | no              | yes      | no     | Dataset exceeds RAM, any metric     |
+| `NphdIndex`        | binary      | yes             | no       | yes    | Binary variable-length, fits in RAM |
+| `ShardedNphdIndex` | binary      | yes             | yes      | no     | Binary variable-length, exceeds RAM |
 
 ## Installation
 
