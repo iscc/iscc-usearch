@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Use `serialized_length` instead of `stats.allocated_bytes` for shard rotation threshold check
+    (exactly matches on-disk file size and is faster)
+- Amortize rotation size check to avoid O(n) `serialized_length` call on every `add()`
+
+### Fixed
+
+- Enable `serialized_length` property test (fixed upstream in usearch-iscc fork)
+
 ## [0.1.0] - 2026-02-06
 
 Initial release of iscc-usearch.

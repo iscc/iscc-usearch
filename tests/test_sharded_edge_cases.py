@@ -215,6 +215,16 @@ def test_property_memory_usage_without_active_shard(tmp_path):
     assert usage >= 0
 
 
+def test_schedule_next_size_check_empty_shard(tmp_path):
+    # type: () -> None
+    """Test _schedule_next_size_check falls back to 1 for empty shard."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index._adds_until_size_check = 99
+    index._schedule_next_size_check(current_size=0)
+
+    assert index._adds_until_size_check == 1
+
+
 def test_property_serialized_length_without_active_shard(tmp_path):
     # type: () -> None
     """Test serialized_length property returns 0 when active_shard is None."""

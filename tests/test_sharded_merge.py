@@ -243,8 +243,9 @@ def test_search_batch_query_triggers_merge(tmp_path):
 
 def test_merge_code_path_single(tmp_path):
     """Explicitly test merge code path for single query."""
-    # Use tiny shard size to force rotation, creating view shards
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=500)
+    # Use small shard size to force rotation, creating view shards
+    # serialized_length ≈ 112 + 400*n for float32/ndim=64, so 5000 fits ~12 vectors
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
 
     # Add vectors - triggers rotation, creating view shards + active shard
     vectors = np.random.rand(50, 64).astype(np.float32)
@@ -265,8 +266,9 @@ def test_merge_code_path_single(tmp_path):
 
 def test_merge_code_path_batch(tmp_path):
     """Explicitly test merge code path for batch query."""
-    # Use tiny shard size to force rotation, creating view shards
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=500)
+    # Use small shard size to force rotation, creating view shards
+    # serialized_length ≈ 112 + 400*n for float32/ndim=64, so 5000 fits ~12 vectors
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
 
     # Add vectors - triggers rotation, creating view shards + active shard
     vectors = np.random.rand(50, 64).astype(np.float32)
@@ -287,8 +289,9 @@ def test_merge_code_path_batch(tmp_path):
 
 def test_merge_single_with_radius_filter(tmp_path):
     """Test merge with radius filtering for single query."""
-    # Use tiny shard size to force rotation, creating view shards
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=500)
+    # Use small shard size to force rotation, creating view shards
+    # serialized_length ≈ 112 + 400*n for float32/ndim=64, so 5000 fits ~12 vectors
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
 
     # Add vectors - triggers rotation, creating view shards + active shard
     vectors = np.random.rand(50, 64).astype(np.float32)
@@ -310,8 +313,9 @@ def test_merge_single_with_radius_filter(tmp_path):
 
 def test_merge_batch_with_radius_filter(tmp_path):
     """Test merge with radius filtering for batch query."""
-    # Use tiny shard size to force rotation, creating view shards
-    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=500)
+    # Use small shard size to force rotation, creating view shards
+    # serialized_length ≈ 112 + 400*n for float32/ndim=64, so 5000 fits ~12 vectors
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000)
 
     # Add vectors - triggers rotation, creating view shards + active shard
     vectors = np.random.rand(50, 64).astype(np.float32)

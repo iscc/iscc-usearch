@@ -285,6 +285,9 @@ class ShardedIndex:
         # Initialize bloom filter (loaded/created in load/view)
         self._bloom: ScalableBloomFilter | None = None
 
+        # Amortized rotation check: skip O(n) serialized_length on every add
+        self._adds_until_size_check: int = 0
+
         # Create directory if needed
         self._path.mkdir(parents=True, exist_ok=True)
 
@@ -348,11 +351,15 @@ class ShardedIndex:
             for key in np.atleast_1d(result):
                 self._bloom.add(int(key))
 
-        # Check if rotation needed (after add completes)
-        # Use stats.allocated_bytes as it better reflects actual disk size
-        # than memory_usage (which includes pre-allocated capacity)
-        if self._active_shard.stats.allocated_bytes > self._shard_size:
-            self._rotate_shard()
+        # Amortized rotation check: only compute serialized_length when countdown expires
+        count_added = len(np.atleast_1d(result))
+        self._adds_until_size_check -= count_added
+        if self._adds_until_size_check <= 0:
+            size = self._active_shard.serialized_length
+            if size > self._shard_size:
+                self._rotate_shard()
+            else:
+                self._schedule_next_size_check(size)
 
         return result
 
@@ -1113,6 +1120,24 @@ class ShardedIndex:
         existing = self._discover_shards()
         return self._get_shard_path(len(existing))
 
+    def _schedule_next_size_check(self, current_size: int) -> None:
+        """Estimate how many adds until shard reaches size limit.
+
+        Uses bytes-per-vector to predict remaining capacity, then schedules
+        the next check at the halfway point for a safety margin.
+
+        :param current_size: Current serialized_length of the active shard.
+        """
+        n_vectors = len(self._active_shard) if self._active_shard else 0
+        if n_vectors > 0:
+            bytes_per_vector = current_size / n_vectors
+            remaining_bytes = self._shard_size - current_size
+            estimated_remaining = int(remaining_bytes / bytes_per_vector)
+            # Check again at halfway to threshold, minimum 1
+            self._adds_until_size_check = max(1, estimated_remaining // 2)
+        else:
+            self._adds_until_size_check = 1
+
     def _rotate_shard(self) -> None:
         """Save current shard and create new one."""
         if self._active_shard is None:
@@ -1147,8 +1172,9 @@ class ShardedIndex:
             self._view_shards = view_shards
         view_shards.merge(viewed_shard)
 
-        # Create new active shard
+        # Create new active shard and reset size check countdown
         self._active_shard = self._create_shard()
+        self._adds_until_size_check = 0
 
     def _empty_results(self, vectors: NDArray[Any], count: int, is_single: bool) -> Matches | BatchMatches:
         """Return empty results in the appropriate format."""
