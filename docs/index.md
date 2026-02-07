@@ -20,6 +20,8 @@ completed shards are memory-mapped for reads. Works with any vector type and met
 supports. Insert throughput stays consistent and memory stays bounded as the index grows to
 hundreds of millions of vectors.
 
+![NphdIndex architecture overview](assets/nphd-index-architecture.avif)
+
 **Normalized Prefix Hamming Distance** (`NphdIndex`, `ShardedNphdIndex`) compares binary vectors
 of mixed bit-lengths -- a 64-bit query finds nearest neighbors among 256-bit vectors with
 comparable distances. Purpose-built for [ISCC](https://iscc.codes) (ISO 24138) content

@@ -12,43 +12,15 @@ and a **custom metric** that ignores padding during distance computation.
 
 ## Length-prefixed padding
 
+![NphdIndex architecture overview](../assets/nphd-index-architecture.avif)
+
 Every vector is padded to a uniform size before storage. The first byte holds the original vector
-length (in bytes), then the vector data, then zero-padding:
-
-```mermaid
-flowchart TB
-    subgraph RAW ["Raw vector (3 bytes)"]
-        direction LR
-        R1["0xFF"] --- R2["0x80"] --- R3["0x40"]
-    end
-
-    subgraph PAD ["Padded to 33 bytes"]
-        direction LR
-        P0["**0x03** length"] --- P1["0xFF"] --- P2["0x80"] --- P3["0x40"] --- P4["0x00 ..."] --- P32["0x00"]
-    end
-
-    RAW -->|pad_vectors| PAD
-```
+length (in bytes), then the vector data, then zero-padding.
 
 The padded vector is stored in USearch as a `ScalarKind.B1` (binary) vector with
 `ndim = max_dim + 8` bits (the extra 8 bits account for the length byte).
 
-On retrieval, `unpad_vectors` reads the length byte and returns only the valid data bytes:
-
-```mermaid
-flowchart TB
-    subgraph STO ["Stored (33 bytes)"]
-        direction LR
-        S0["**0x03**"] --- S1["0xFF"] --- S2["0x80"] --- S3["0x40"] --- S4["0x00..."]
-    end
-
-    subgraph RET ["Returned (3 bytes)"]
-        direction LR
-        O1["0xFF"] --- O2["0x80"] --- O3["0x40"]
-    end
-
-    STO -->|unpad_vectors| RET
-```
+On retrieval, `unpad_vectors` reads the length byte and returns only the valid data bytes.
 
 Both `pad_vectors` and `unpad_vectors` are compiled with Numba `@njit(cache=True)` for native speed.
 
@@ -84,49 +56,6 @@ fingerprints. `NphdIndex` validates this at construction time.
 
 `iscc-usearch` provides four index classes. Two are single-file, two are sharded:
 
-```mermaid
-classDiagram
-    direction TB
-    class usearch_Index ["usearch.Index"] {
-        +add()
-        +search()
-        +get()
-        +save() / load() / view()
-    }
-
-    class Index {
-        +upsert()
-    }
-
-    class NphdIndex {
-        +max_dim
-        +add() pad vectors
-        +get() unpad vectors
-        +search() pad query
-        +restore()
-    }
-
-    class ShardedIndex {
-        +path
-        +shard_size
-        +bloom filter
-        +add() auto-rotate
-        +search() fan-out + merge
-        +save() / reopen
-    }
-
-    class ShardedNphdIndex {
-        +max_dim
-        +add() pad vectors
-        +get() unpad vectors
-        +search() pad query
-    }
-
-    usearch_Index <|-- Index : extends
-    Index <|-- NphdIndex : extends
-    ShardedIndex <|-- ShardedNphdIndex : extends
-```
-
 `NphdIndex` inherits from `Index` (which extends USearch's `Index`) and adds padding and the NPHD
 metric. `ShardedIndex` is a standalone composition-based class that manages multiple USearch indexes
 as shards. `ShardedNphdIndex` extends `ShardedIndex` with variable-length vector support and NPHD.
@@ -147,77 +76,18 @@ For most ISCC workloads, use **`NphdIndex`** for datasets that fit in RAM, or
 
 ### Write path (add)
 
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant Idx as NphdIndex
-    participant Pad as pad_vectors (@njit)
-    participant USearch as USearch Index
+For `NphdIndex`, the application calls `add(key, vector)`, which pads the vector (prepends a length
+byte, zero-fills to `max_dim + 8` bits) via `pad_vectors` and stores it in the USearch HNSW graph.
 
-    App->>Idx: add(key, vector)
-    Idx->>Pad: pad vector (prepend length byte, zero-fill)
-    Pad-->>Idx: padded vector (max_dim + 8 bits)
-    Idx->>USearch: add(key, padded_vector)
-    USearch-->>Idx: HNSW graph updated
-    Idx-->>App: done
-```
-
-For `ShardedNphdIndex`, the write path adds bloom filter updates and shard rotation:
-
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant Idx as ShardedNphdIndex
-    participant Pad as pad_vectors (@njit)
-    participant Bloom as ScalableBloomFilter
-    participant Active as Active Shard (RAM)
-    participant Disk as Disk
-
-    App->>Idx: add(key, vector)
-    Idx->>Pad: pad vector
-    Pad-->>Idx: padded vector
-    Idx->>Bloom: add(key)
-    Idx->>Active: add(key, padded_vector)
-
-    alt active shard exceeds shard_size
-        Active->>Disk: save shard_NNN.usearch
-        Disk-->>Active: reopen as memory-mapped view
-        Note over Active: create fresh active shard
-    end
-
-    Idx-->>App: done
-```
+For `ShardedNphdIndex`, the write path adds bloom filter updates and automatic shard rotation: once
+the active shard exceeds `shard_size`, it is saved to disk and reopened as a memory-mapped view
+while a fresh active shard is created.
 
 ### Read path (search)
 
-```mermaid
-sequenceDiagram
-    participant App as Application
-    participant Idx as ShardedNphdIndex
-    participant Pad as pad_vectors (@njit)
-    participant Active as Active Shard
-    participant Views as View Shards (mmap)
-    participant NPHD as NPHD Metric (@cfunc)
-
-    App->>Idx: search(query, count)
-    Idx->>Pad: pad query
-    Pad-->>Idx: padded query
-
-    par search all shards
-        Idx->>Active: search(padded_query)
-        Active->>NPHD: distance computations
-        NPHD-->>Active: distances [0.0, 1.0]
-        Active-->>Idx: shard results
-    and
-        Idx->>Views: search(padded_query) on each view
-        Views->>NPHD: distance computations
-        NPHD-->>Views: distances [0.0, 1.0]
-        Views-->>Idx: shard results
-    end
-
-    Idx->>Idx: merge results (argsort, top-k)
-    Idx-->>App: matches (keys + distances)
-```
+The query is padded and searched across all shards in parallel (active shard in RAM plus
+memory-mapped view shards). Each shard invokes the NPHD metric for distance computations, returning
+distances in [0.0, 1.0]. Results are merged via argsort and top-k selection.
 
 ## Concurrency model
 
