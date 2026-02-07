@@ -37,6 +37,15 @@ normalizes the result to `[0.0, 1.0]`. A 64-bit query can find its nearest neigh
 memory-mapped for reads. This maintains consistent insert throughput regardless of index size and
 keeps the memory footprint bounded.
 
+## Which index class?
+
+| Class              | Variable length | Sharding | Upsert | Use when...                                               |
+| ------------------ | --------------- | -------- | ------ | --------------------------------------------------------- |
+| `NphdIndex`        | yes             | no       | yes    | Dataset fits in RAM                                       |
+| `ShardedNphdIndex` | yes             | yes      | no     | Dataset exceeds RAM or needs consistent insert throughput |
+
+Both support 64/128/256-bit ISCC codes in the same index.
+
 ## Installation
 
 ```bash
