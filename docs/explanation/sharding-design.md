@@ -79,13 +79,6 @@ searched separately. The two result sets are then combined:
 1. Merge results using vectorized NumPy operations (concatenate, argsort, advanced indexing).
 1. Return top-k results sorted by distance.
 
-!!! note "128-bit UUID key mode"
-
-    The 128-bit variants (`ShardedIndex128`, `ShardedNphdIndex128`) cannot use USearch's
-    `Indexes` class because it does not support uuid-keyed `IndexBig` shards. Instead, each
-    view shard is searched individually and results are merged. The API is identical — this is
-    an internal difference only.
-
 ## Trade-offs
 
 | Factor         | Fewer shards (large shard_size)    | More shards (small shard_size)     |

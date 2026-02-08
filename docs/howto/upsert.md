@@ -87,8 +87,8 @@ for key, vec in zip(variable_keys, variable_vecs):
 
 !!! note
 
-    `upsert()` is available on `NphdIndex` only. Sharded indexes (`ShardedIndex`,
-    `ShardedNphdIndex`, and their 128-bit variants) do not support `upsert()` because they use
-    an append-only design without `remove()`.
+    `upsert()` is available on single-file indexes only (`NphdIndex`, `Index`), including
+    uuid-keyed indexes. Sharded indexes do not support `upsert()` because they use an
+    append-only design without `remove()`.
 
     The number of keys and vectors must match, or `ValueError` is raised.

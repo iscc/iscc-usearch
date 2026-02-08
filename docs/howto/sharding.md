@@ -123,7 +123,7 @@ raise `NotImplementedError`:
 - `remove()` -- vectors cannot be deleted.
 - `copy()` / `clear()` / `reset()` -- would require handling multiple files.
 - `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.
-- `upsert()` -- not supported (128-bit variants also raise `NotImplementedError`).
+- `upsert()` -- not supported (append-only design requires `remove()`).
 
 !!! warning "Single-process only"
 

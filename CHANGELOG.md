@@ -14,17 +14,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `_UuidKeyMixin` providing key-handling hooks, validation, and dispatch for all 128-bit subclasses
 - `ScalableBloomFilter` support for `bytes` keys (`add`, `contains`, `add_batch`, `contains_batch`)
 - Strict validation on 128-bit key operations — wrong key type, length, or dtype raises `ValueError`
-- Guard on `upsert()` for UUID-keyed indexes (`NotImplementedError`)
+- `upsert()` support for 128-bit UUID keys (single `bytes(16)` and batch `V16` ndarray)
 
 ### Changed
 
 - Extract 6 key-handling hook methods on `ShardedIndex` (`_is_single_key`, `_bloom_key`,
     `_bloom_keys`, `_normalize_batch_keys`, `_shard_batch_keys`, `_key_dtype`) for subclass
     customization
-- Add `_register_view_shard` and `_search_view_shards` hooks to `ShardedIndex` for uuid-mode
-    compatibility (usearch `Indexes` class does not support `IndexBig`)
-- Add `_iter_shard_vectors` and `_get_shard_vector` hooks to `ShardedIndex` for uuid-mode
-    compatibility (usearch `IndexBig.vectors` property is broken for uuid keys)
+- Remove UUID workaround hooks (`_iter_shard_vectors`, `_get_shard_vector`, `_register_view_shard`,
+    `_search_view_shards`) — upstream usearch now supports `Index.vectors`, `Indexes.merge()`, and
+    `Indexes.search()` for uuid-keyed indexes
+- UUID sharded indexes now use C++-optimized `Indexes` multi-shard search instead of Python-side
+    per-shard iteration
 - Make `_merge_batch_matches` and `_apply_radius_filter` dtype-safe using `np.zeros_like` + mask-copy
     instead of `np.where(..., 0)` (V16 arrays do not support scalar 0 fill)
 - Rewrite `ShardedIndexedKeys.__array__` to shard-aware concatenation preserving correct dtype

@@ -158,5 +158,6 @@ silent incorrect results.
 ## Limitations
 
 - **No auto-keys**: `keys=None` raises `ValueError`. All keys must be explicit.
-- **No upsert**: `upsert()` raises `NotImplementedError` on 128-bit indexes.
 - **Append-only**: Same as standard sharded indexes — no `remove()`, `copy()`, or `clear()`.
+    `upsert()` is available on the single-file `Index` (including uuid keys) but not on sharded
+    indexes.
