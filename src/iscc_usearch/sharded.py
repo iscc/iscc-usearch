@@ -181,11 +181,12 @@ class ShardedIndexedVectors:
         """Yield vectors from all shards lazily.
 
         Iterates through view shards first, then active shard.
+        Uses _iter_shard_vectors hook for uuid-key compatibility.
         """
         for idx in self._index._viewed_indexes:
-            yield from idx.vectors
+            yield from self._index._iter_shard_vectors(idx)
         if self._index._active_shard is not None:
-            yield from self._index._active_shard.vectors
+            yield from self._index._iter_shard_vectors(self._index._active_shard)
 
     def __getitem__(self, index: int | slice) -> NDArray[Any]:
         """Support indexing and slicing.
@@ -214,11 +215,11 @@ class ShardedIndexedVectors:
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
-                    return idx.vectors[index - current]
+                    return self._index._get_shard_vector(idx, index - current)
                 current += shard_len
 
             if self._index._active_shard is not None:
-                return self._index._active_shard.vectors[index - current]
+                return self._index._get_shard_vector(self._index._active_shard, index - current)
 
             raise IndexError("index out of range")  # pragma: no cover
 
@@ -355,6 +356,18 @@ class ShardedIndex:
     def _key_dtype(self) -> np.dtype:
         """NumPy dtype for keys."""
         return np.dtype(np.uint64)
+
+    # --- Shard vector access hooks (override in _UuidKeyMixin for uuid keys) ---
+    # usearch's IndexBig.vectors is broken for uuid keys, so these hooks
+    # allow the mixin to fall back to key-based retrieval.
+
+    def _iter_shard_vectors(self, shard: Index):
+        """Yield vectors from a shard."""
+        yield from shard.vectors
+
+    def _get_shard_vector(self, shard: Index, position: int) -> NDArray[Any]:
+        """Get a vector from a shard by position."""
+        return shard.vectors[position]
 
     # --- View shard hooks (override in _UuidKeyMixin for uuid keys) ---
 
@@ -1380,6 +1393,20 @@ class _UuidKeyMixin:
     # Attributes/methods provided by ShardedIndex at runtime (declared for type checking)
     _viewed_indexes: list[Index]
     _merge_search_results: Callable[..., Matches | BatchMatches]
+
+    # --- Shard vector access hook overrides ---
+    # usearch's IndexBig.vectors is broken for uuid keys, so we iterate
+    # via keys and get() instead.
+
+    def _iter_shard_vectors(self, shard: Index):
+        """Yield vectors from a uuid-keyed shard via key-based retrieval."""
+        for key in shard.keys:
+            yield shard.get(bytes(key))
+
+    def _get_shard_vector(self, shard: Index, position: int) -> NDArray[Any]:
+        """Get a vector from a uuid-keyed shard by position."""
+        key = shard.keys[position]
+        return shard.get(bytes(key))
 
     # --- View shard hook overrides ---
 

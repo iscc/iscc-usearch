@@ -624,3 +624,65 @@ def test_search_view_shards_merge_multiple(tmp_path):
 
     matches = idx.search(vecs[0], count=5)
     assert len(matches) > 0
+
+
+# === Vectors Property ===
+
+
+def test_vectors_iteration(tmp_path):
+    """Vectors iteration works via key-based retrieval for uuid indexes."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
+    keys = make_keys(3)
+    vecs = random_vectors(3, ndim=8)
+    idx.add(keys, vecs)
+
+    vectors_list = list(idx.vectors)
+    assert len(vectors_list) == 3
+    # Verify all original vectors are present (order may differ)
+    for orig in vecs:
+        assert any(np.allclose(orig, v) for v in vectors_list)
+
+
+def test_vectors_indexing(tmp_path):
+    """Vectors indexing works for uuid indexes."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
+    vecs = random_vectors(3, ndim=8)
+    idx.add(make_keys(3), vecs)
+
+    assert_array_equal(idx.vectors[0], vecs[0])
+    assert_array_equal(idx.vectors[-1], vecs[2])
+
+
+def test_vectors_slicing(tmp_path):
+    """Vectors slicing works for uuid indexes."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
+    vecs = random_vectors(5, ndim=8)
+    idx.add(make_keys(5), vecs)
+
+    sliced = idx.vectors[:3]
+    assert sliced.shape == (3, 8)
+
+
+def test_vectors_numpy_conversion(tmp_path):
+    """Vectors numpy conversion works for uuid indexes."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
+    vecs = random_vectors(5, ndim=8)
+    idx.add(make_keys(5), vecs)
+
+    arr = np.asarray(idx.vectors)
+    assert arr.shape == (5, 8)
+    # Verify all original vectors are present (order may differ from insertion)
+    for v in vecs:
+        assert any(np.allclose(arr[i], v) for i in range(5))
+
+
+def test_vectors_across_shards(tmp_path):
+    """Vectors iteration spans view shards and active shard."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32", shard_size=500)
+    vecs = random_vectors(50, ndim=8)
+    for i in range(50):
+        idx.add(make_key(i), vecs[i])
+
+    assert idx.shard_count >= 2
+    vectors_list = list(idx.vectors)
+    assert len(vectors_list) == 50

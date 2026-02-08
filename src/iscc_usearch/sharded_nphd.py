@@ -12,9 +12,9 @@ from usearch.index import BatchMatches, Index, Matches
 
 from iscc_usearch.metrics import create_nphd_metric
 from iscc_usearch.nphd import pad_vectors, unpad_vectors
-from iscc_usearch.sharded import ShardedIndex
+from iscc_usearch.sharded import ShardedIndex, _UuidKeyMixin
 
-__all__ = ["ShardedNphdIndex", "ShardedNphdIndexedVectors"]
+__all__ = ["ShardedNphdIndex", "ShardedNphdIndex128", "ShardedNphdIndexedVectors"]
 
 
 class ShardedNphdIndexedVectors:
@@ -42,12 +42,13 @@ class ShardedNphdIndexedVectors:
         """Yield unpadded vectors from all shards lazily.
 
         Iterates through view shards first, then active shard.
+        Uses _iter_shard_vectors hook for uuid-key compatibility.
         """
         for idx in self._index._viewed_indexes:
-            for vec in idx.vectors:
+            for vec in self._index._iter_shard_vectors(idx):
                 yield unpad_vectors(vec.reshape(1, -1))[0]
         if self._index._active_shard is not None:
-            for vec in self._index._active_shard.vectors:
+            for vec in self._index._iter_shard_vectors(self._index._active_shard):
                 yield unpad_vectors(vec.reshape(1, -1))[0]
 
     def __getitem__(self, index: int | slice) -> NDArray[np.uint8] | list[NDArray[np.uint8]]:
@@ -72,12 +73,12 @@ class ShardedNphdIndexedVectors:
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
-                    vec = idx.vectors[index - current]
+                    vec = self._index._get_shard_vector(idx, index - current)
                     return unpad_vectors(vec.reshape(1, -1))[0]
                 current += shard_len
 
             if self._index._active_shard is not None:
-                vec = self._index._active_shard.vectors[index - current]
+                vec = self._index._get_shard_vector(self._index._active_shard, index - current)
                 return unpad_vectors(vec.reshape(1, -1))[0]
 
             raise IndexError("index out of range")  # pragma: no cover
@@ -370,3 +371,60 @@ class ShardedNphdIndex(ShardedIndex):
     def __repr__(self) -> str:
         """Return string representation of the sharded NPHD index."""
         return f"ShardedNphdIndex({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path})"
+
+
+class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
+    """Sharded NPHD index with 128-bit UUID keys.
+
+    Combines ShardedNphdIndex's variable-length vector support with 128-bit
+    composite keys represented as bytes(16) for single keys and np.dtype('V16')
+    arrays for batches.
+
+    Auto-generation of keys (keys=None) is not supported — all keys must be
+    provided explicitly.
+    """
+
+    def __init__(self, *, path: str | os.PathLike, **kwargs: Any) -> None:
+        """Initialize a 128-bit sharded NPHD index.
+
+        :param path: Directory path for shard storage
+        :param kwargs: Passed to ShardedNphdIndex (key_kind is absorbed if present)
+        """
+        kwargs.pop("key_kind", None)
+        super().__init__(path=path, **kwargs)
+
+    def _create_shard(self) -> Index:
+        """Create a uuid-keyed NPHD shard."""
+        return Index(
+            ndim=self._max_dim + 8,
+            metric=create_nphd_metric(),
+            dtype="b1",
+            connectivity=self._config.get("connectivity"),
+            expansion_add=self._config.get("expansion_add"),
+            expansion_search=self._config.get("expansion_search"),
+            key_kind="uuid",
+        )
+
+    def _restore_shard(self, path: Path, view: bool) -> Index | None:
+        """Restore a uuid-keyed NPHD shard from disk."""
+        meta = Index.metadata(str(path))
+        if meta is None:  # pragma: no cover
+            return None
+        shard = Index(
+            ndim=meta["dimensions"],
+            metric=create_nphd_metric(),
+            dtype=meta["kind_scalar"],
+            key_kind="uuid",
+        )
+        if view:
+            shard.view(str(path))
+        else:
+            shard.load(str(path))
+        # Restore custom NPHD metric (usearch load/view replaces it with standard Hamming)
+        metric = create_nphd_metric()
+        shard._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
+        return shard
+
+    def __repr__(self) -> str:
+        """Return string representation of the sharded NPHD 128-bit index."""
+        return f"ShardedNphdIndex128({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path})"
