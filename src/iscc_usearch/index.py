@@ -5,9 +5,12 @@ from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
-from usearch.index import Index as _Index
+from usearch.index import Index as _Index, ScalarKind
 
 __all__ = ["Index"]
+
+# NumPy dtype for 128-bit UUID keys
+_UUID_DTYPE = np.dtype("V16")
 
 
 class Index(_Index):
@@ -15,39 +18,46 @@ class Index(_Index):
 
     def upsert(
         self,
-        keys: int | Sequence[int] | NDArray[np.uint64],
+        keys: int | bytes | Sequence[int] | NDArray,
         vectors: NDArray,
         **kwargs: Any,
-    ) -> NDArray[np.uint64]:
+    ) -> NDArray:
         """
         Insert or update vectors by key (true idempotent semantics).
 
         Calling upsert(key, vec) always results in vec being stored for that key.
         For existing keys, updates only if the vector differs (conditional update).
 
-        :param keys: Integer key(s). None not supported (raises ValueError).
+        Supports both uint64 and 128-bit UUID keys.
+
+        :param keys: Key(s) — int/Sequence[int] for uint64, bytes(16)/V16 ndarray for UUID.
         :param vectors: Vector(s) to upsert (must be uniform length in batch).
         :param kwargs: Additional arguments passed to add().
-        :return: Array of uint64 keys (same shape/type as add()).
+        :return: Array of keys (uint64 or V16 dtype).
         :raises ValueError: If keys is None or keys/vectors length mismatch.
         """
         if keys is None:
             raise ValueError("upsert() requires explicit keys. Auto-generation (keys=None) is not supported.")
 
-        from usearch.index import ScalarKind
-
-        if getattr(self, "_key_kind", None) == ScalarKind.UUID:
-            raise NotImplementedError("upsert() does not support 128-bit UUID keys")
+        is_uuid = getattr(self, "_key_kind", None) == ScalarKind.UUID
 
         # Normalize inputs
-        keys_arr = np.atleast_1d(np.asarray(keys, dtype=np.uint64))
+        if is_uuid:
+            if isinstance(keys, bytes):
+                if len(keys) != 16:
+                    raise ValueError(f"UUID key must be exactly 16 bytes, got {len(keys)}")
+                keys_arr = np.array([keys], dtype=_UUID_DTYPE)
+            else:
+                keys_arr = np.atleast_1d(np.asarray(keys))
+        else:
+            keys_arr = np.atleast_1d(np.asarray(keys, dtype=np.uint64))
         vectors_arr = np.atleast_2d(np.asarray(vectors))
 
         if len(keys_arr) != len(vectors_arr):
             raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_arr)})")
 
         if len(keys_arr) == 0:
-            return np.array([], dtype=np.uint64)
+            return np.array([], dtype=keys_arr.dtype)
 
         # Handle internal duplicates: keep LAST occurrence (upsert = last write wins)
         reversed_keys = keys_arr[::-1]
@@ -69,7 +79,7 @@ class Index(_Index):
         if exists_mask.any():
             existing_keys = unique_keys[exists_mask]
             existing_new_vectors = unique_vectors[exists_mask]
-            current_vectors = np.asarray(self.get(list(existing_keys)))
+            current_vectors = np.asarray(self.get(existing_keys))
 
             differs = ~np.all(current_vectors == existing_new_vectors, axis=1)
             if differs.any():

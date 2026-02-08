@@ -137,7 +137,7 @@ class ShardedIndexedKeys:
         """
         arrays = []
         for idx in self._index._viewed_indexes:
-            if len(idx) > 0:
+            if len(idx) > 0:  # pragma: no branch - viewed shards are never empty
                 arrays.append(np.asarray(idx.keys))
         if self._index._active_shard is not None and len(self._index._active_shard) > 0:
             arrays.append(np.asarray(self._index._active_shard.keys))
@@ -181,12 +181,11 @@ class ShardedIndexedVectors:
         """Yield vectors from all shards lazily.
 
         Iterates through view shards first, then active shard.
-        Uses _iter_shard_vectors hook for uuid-key compatibility.
         """
         for idx in self._index._viewed_indexes:
-            yield from self._index._iter_shard_vectors(idx)
+            yield from idx.vectors
         if self._index._active_shard is not None:
-            yield from self._index._iter_shard_vectors(self._index._active_shard)
+            yield from self._index._active_shard.vectors
 
     def __getitem__(self, index: int | slice) -> NDArray[Any]:
         """Support indexing and slicing.
@@ -215,11 +214,11 @@ class ShardedIndexedVectors:
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
-                    return self._index._get_shard_vector(idx, index - current)
+                    return idx.vectors[index - current]
                 current += shard_len
 
             if self._index._active_shard is not None:
-                return self._index._get_shard_vector(self._index._active_shard, index - current)
+                return self._index._active_shard.vectors[index - current]
 
             raise IndexError("index out of range")  # pragma: no cover
 
@@ -357,25 +356,12 @@ class ShardedIndex:
         """NumPy dtype for keys."""
         return np.dtype(np.uint64)
 
-    # --- Shard vector access hooks (override in _UuidKeyMixin for uuid keys) ---
-    # usearch's IndexBig.vectors is broken for uuid keys, so these hooks
-    # allow the mixin to fall back to key-based retrieval.
-
-    def _iter_shard_vectors(self, shard: Index):
-        """Yield vectors from a shard."""
-        yield from shard.vectors
-
-    def _get_shard_vector(self, shard: Index, position: int) -> NDArray[Any]:
-        """Get a vector from a shard by position."""
-        return shard.vectors[position]
-
-    # --- View shard hooks (override in _UuidKeyMixin for uuid keys) ---
+    # --- View shard hooks ---
 
     def _register_view_shard(self, shard: Index) -> None:
         """Register a shard in view mode for read-only access.
 
         Adds to both _viewed_indexes list and _view_shards (Indexes) container.
-        Override to skip Indexes merge for key types not supported by Indexes.
         """
         self._viewed_indexes.append(shard)
         if self._view_shards is None:
@@ -1393,49 +1379,6 @@ class _UuidKeyMixin:
     # Attributes/methods provided by ShardedIndex at runtime (declared for type checking)
     _viewed_indexes: list[Index]
     _merge_search_results: Callable[..., Matches | BatchMatches]
-
-    # --- Shard vector access hook overrides ---
-    # usearch's IndexBig.vectors is broken for uuid keys, so we iterate
-    # via keys and get() instead.
-
-    def _iter_shard_vectors(self, shard: Index):
-        """Yield vectors from a uuid-keyed shard via key-based retrieval."""
-        for key in shard.keys:
-            yield shard.get(bytes(key))
-
-    def _get_shard_vector(self, shard: Index, position: int) -> NDArray[Any]:
-        """Get a vector from a uuid-keyed shard by position."""
-        key = shard.keys[position]
-        return shard.get(bytes(key))
-
-    # --- View shard hook overrides ---
-
-    def _register_view_shard(self, shard: Index) -> None:
-        """Register view shard without Indexes merge (not compatible with uuid keys)."""
-        self._viewed_indexes.append(shard)
-
-    def _search_view_shards(
-        self,
-        vectors: NDArray[Any],
-        count: int,
-        threads: int,
-        exact: bool,
-        progress: Callable[[int, int], bool] | None,
-    ) -> Matches | BatchMatches | None:
-        """Search each viewed shard individually and merge results."""
-        if not self._viewed_indexes:
-            return None
-        results = []
-        for idx in self._viewed_indexes:
-            if len(idx) > 0:  # pragma: no branch - viewed shards are never empty
-                r = idx.search(vectors, count=count, threads=threads, exact=exact, progress=progress)
-                results.append(r)
-        if not results:
-            return None  # pragma: no cover - viewed shards are never empty in practice
-        if len(results) == 1:
-            return results[0]
-        is_single = vectors.ndim == 1
-        return self._merge_search_results(results, count, float("inf"), is_single)
 
     # --- Key handling hook overrides ---
 

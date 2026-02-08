@@ -42,13 +42,12 @@ class ShardedNphdIndexedVectors:
         """Yield unpadded vectors from all shards lazily.
 
         Iterates through view shards first, then active shard.
-        Uses _iter_shard_vectors hook for uuid-key compatibility.
         """
         for idx in self._index._viewed_indexes:
-            for vec in self._index._iter_shard_vectors(idx):
+            for vec in idx.vectors:
                 yield unpad_vectors(vec.reshape(1, -1))[0]
         if self._index._active_shard is not None:
-            for vec in self._index._iter_shard_vectors(self._index._active_shard):
+            for vec in self._index._active_shard.vectors:
                 yield unpad_vectors(vec.reshape(1, -1))[0]
 
     def __getitem__(self, index: int | slice) -> NDArray[np.uint8] | list[NDArray[np.uint8]]:
@@ -73,12 +72,12 @@ class ShardedNphdIndexedVectors:
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
-                    vec = self._index._get_shard_vector(idx, index - current)
+                    vec = idx.vectors[index - current]
                     return unpad_vectors(vec.reshape(1, -1))[0]
                 current += shard_len
 
             if self._index._active_shard is not None:
-                vec = self._index._get_shard_vector(self._index._active_shard, index - current)
+                vec = self._index._active_shard.vectors[index - current]
                 return unpad_vectors(vec.reshape(1, -1))[0]
 
             raise IndexError("index out of range")  # pragma: no cover

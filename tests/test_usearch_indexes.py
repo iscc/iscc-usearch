@@ -2,38 +2,7 @@
 Tests for usearch Indexes class behavior.
 
 These tests verify the behavior of the Indexes class which manages multiple
-Index instances for distributed search. Issues discovered here should be
-reported upstream to unum-cloud/usearch.
-
-BUG REPORT: Indexes class segfaults when initialized with multiple paths.
-- Tested on: Windows 10, Python 3.12, usearch 2.21.0
-- Single path works fine
-- Two or more paths cause access violation in merge_paths
-- GitHub issue: https://github.com/unum-cloud/usearch/issues/643
-
-WORKAROUND: Instead of Indexes(paths=[...], view=True), use:
-    1. Load each index separately with Index.restore(path, view=True)
-    2. Create empty Indexes()
-    3. Merge each index with combined._compiled.merge(idx._compiled)
-
-Minimal reproduction:
-    from usearch.index import Index, Indexes, MetricKind, ScalarKind
-    import numpy as np
-    import tempfile
-    from pathlib import Path
-
-    tmpdir = Path(tempfile.mkdtemp())
-    paths = []
-    for i in range(2):
-        idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
-        idx.add(i, np.array([i, 2, 3, 4], dtype=np.uint8))
-        path = tmpdir / f"shard_{i}.usearch"
-        idx.save(str(path))
-        paths.append(str(path))
-        del idx
-
-    # This crashes with segfault:
-    indexes = Indexes(paths=paths, view=True)
+Index instances for distributed search.
 """
 
 import numpy as np
@@ -70,13 +39,11 @@ class TestIndexesCreation:
         indexes = Indexes(paths=[two_saved_indexes[0]], view=True)
         assert len(indexes) == 2  # Two vectors in first shard
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_from_multiple_paths(self, two_saved_indexes):
         """Indexes can be created from multiple index files."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
         assert len(indexes) == 4  # Two vectors per shard, two shards
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_view_mode(self, two_saved_indexes):
         """Indexes in view mode are memory-mapped."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
@@ -87,7 +54,6 @@ class TestIndexesCreation:
 class TestIndexesSearch:
     """Tests for Indexes search functionality."""
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_search_single_query(self, two_saved_indexes):
         """Search with single query vector returns Matches."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
@@ -95,7 +61,6 @@ class TestIndexesSearch:
         results = indexes.search(query, count=3)
         assert len(results) <= 3
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_search_batch_query(self, two_saved_indexes):
         """Search with batch query vectors returns BatchMatches."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
@@ -103,7 +68,6 @@ class TestIndexesSearch:
         results = indexes.search(queries, count=3)
         assert len(results) == 2  # Two queries
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_search_finds_vectors_across_shards(self, two_saved_indexes):
         """Search finds vectors that exist in different shards."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
@@ -117,7 +81,6 @@ class TestIndexesSearch:
         results2 = indexes.search(query2, count=1)
         assert results2.keys[0] == 10  # Should find exact match
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_search_aggregates_results(self, two_saved_indexes):
         """Search returns results aggregated from all shards."""
         indexes = Indexes(paths=two_saved_indexes, view=True)
@@ -138,24 +101,23 @@ class TestIndexesMerge:
         # Load an index and merge into Indexes
         viewed = Index.restore(two_saved_indexes[0], view=True)
         indexes = Indexes()
-        indexes._compiled.merge(viewed._compiled)
+        indexes.merge(viewed)
         initial_size = len(indexes)
 
         # Create another index and merge it
         idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1)
         idx.add(100, np.array([9, 9, 9, 9], dtype=np.uint8))
-        indexes._compiled.merge(idx._compiled)
+        indexes.merge(idx)
 
         assert len(indexes) == initial_size + 1
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_merge_paths(self, two_saved_indexes, tmp_path):
         """Indexes can merge additional paths."""
         indexes = Indexes(paths=[two_saved_indexes[0]], view=True)
         initial_size = len(indexes)
 
         # Merge the second shard
-        indexes._compiled.merge_paths([two_saved_indexes[1]], view=True, threads=0)
+        indexes.merge_path(two_saved_indexes[1])
         assert len(indexes) == initial_size + 2  # Second shard has 2 vectors
 
 
@@ -185,7 +147,6 @@ class TestIndexesEdgeCases:
         results = indexes.search(query, count=5)
         assert len(results) == 0
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_sequential_creation_and_deletion(self, two_saved_indexes):
         """Creating and deleting Indexes objects sequentially works."""
         for _ in range(3):
@@ -193,7 +154,6 @@ class TestIndexesEdgeCases:
             assert len(indexes) == 4
             del indexes
 
-    @pytest.mark.skip(reason="Segfaults with usearch 2.21.0 - see module docstring")
     def test_indexes_concurrent_instances(self, two_saved_indexes):
         """Multiple Indexes instances can coexist."""
         indexes1 = Indexes(paths=two_saved_indexes, view=True)

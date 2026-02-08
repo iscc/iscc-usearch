@@ -522,12 +522,60 @@ def test_keys_numpy_conversion_empty_index(tmp_path):
     assert len(arr) == 0
 
 
-def test_upsert_guard_uuid_index():
-    """upsert() raises NotImplementedError on uuid-keyed Index."""
+def test_upsert_uuid_wrong_key_length_raises():
+    """upsert() raises ValueError for non-16-byte UUID key."""
     idx = Index(ndim=8, dtype="f32", key_kind="uuid")
     vec = np.ones(8, dtype=np.float32)
-    with pytest.raises(NotImplementedError, match="128-bit UUID keys"):
-        idx.upsert(b"\x01" * 16, vec)
+    with pytest.raises(ValueError, match="exactly 16 bytes"):
+        idx.upsert(b"\x01" * 8, vec)
+    with pytest.raises(ValueError, match="exactly 16 bytes"):
+        idx.upsert(b"\x01" * 20, vec)
+
+
+def test_upsert_uuid_single_new():
+    """upsert() adds a single new vector with uuid key."""
+    idx = Index(ndim=8, dtype="f32", key_kind="uuid")
+    key = b"\x01" * 16
+    vec = np.ones(8, dtype=np.float32)
+    result = idx.upsert(key, vec)
+    assert len(idx) == 1
+    assert_array_equal(idx.get(key), vec)
+    assert result.dtype == UUID_DTYPE
+
+
+def test_upsert_uuid_update():
+    """upsert() updates existing vector with uuid key."""
+    idx = Index(ndim=8, dtype="f32", key_kind="uuid")
+    key = b"\x01" * 16
+    vec1 = np.ones(8, dtype=np.float32)
+    vec2 = np.arange(8, dtype=np.float32)
+    idx.upsert(key, vec1)
+    idx.upsert(key, vec2)
+    assert len(idx) == 1
+    assert_array_equal(idx.get(key), vec2)
+
+
+def test_upsert_uuid_same_noop():
+    """upsert() with same vector does not modify uuid-keyed index."""
+    idx = Index(ndim=8, dtype="f32", key_kind="uuid")
+    key = b"\x01" * 16
+    vec = np.ones(8, dtype=np.float32)
+    idx.upsert(key, vec)
+    idx.upsert(key, vec)  # same vector — should be a no-op
+    assert len(idx) == 1
+    assert_array_equal(idx.get(key), vec)
+
+
+def test_upsert_uuid_batch():
+    """upsert() handles batch of uuid keys."""
+    idx = Index(ndim=8, dtype="f32", key_kind="uuid")
+    keys = np.array([make_key(i) for i in range(3)], dtype=UUID_DTYPE)
+    vecs = np.eye(3, 8, dtype=np.float32)
+    result = idx.upsert(keys, vecs)
+    assert len(idx) == 3
+    assert result.dtype == UUID_DTYPE
+    for i in range(3):
+        assert_array_equal(idx.get(make_key(i)), vecs[i])
 
 
 def test_size_and_keys_after_rotation(tmp_path):
