@@ -65,13 +65,13 @@ def test_contains_batch_bytes_single_filter():
 
 def test_contains_batch_bytes_multiple_filters():
     """Test contains_batch bytes path across multiple filters."""
-    bloom = ScalableBloomFilter(initial_capacity=50, fpr=0.01, growth_factor=2.0)
-    keys = [os.urandom(16) for _ in range(150)]
+    bloom = ScalableBloomFilter(initial_capacity=50, fpr=0.001, growth_factor=2.0)
+    keys = [i.to_bytes(16, "big") for i in range(150)]
 
     bloom.add_batch(keys)
     assert bloom.filter_count > 1
 
-    absent = [os.urandom(16) for _ in range(5)]
+    absent = [(1000 + i).to_bytes(16, "big") for i in range(5)]
     results = bloom.contains_batch(keys[:5] + absent)
     for i in range(5):
         assert results[i] is True
