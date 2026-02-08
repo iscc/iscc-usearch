@@ -26,7 +26,7 @@ from usearch.index import (
 from iscc_usearch.bloom import ScalableBloomFilter
 from iscc_usearch.utils import timer
 
-__all__ = ["ShardedIndex", "ShardedIndexedKeys", "ShardedIndexedVectors"]
+__all__ = ["ShardedIndex", "ShardedIndex128", "ShardedIndexedKeys", "ShardedIndexedVectors"]
 
 # Default bloom filter file name
 BLOOM_FILENAME = "bloom.isbf"
@@ -356,6 +356,35 @@ class ShardedIndex:
         """NumPy dtype for keys."""
         return np.dtype(np.uint64)
 
+    # --- View shard hooks (override in _UuidKeyMixin for uuid keys) ---
+
+    def _register_view_shard(self, shard: Index) -> None:
+        """Register a shard in view mode for read-only access.
+
+        Adds to both _viewed_indexes list and _view_shards (Indexes) container.
+        Override to skip Indexes merge for key types not supported by Indexes.
+        """
+        self._viewed_indexes.append(shard)
+        if self._view_shards is None:
+            self._view_shards = Indexes()
+        self._view_shards.merge(shard)
+
+    def _search_view_shards(
+        self,
+        vectors: NDArray[Any],
+        count: int,
+        threads: int,
+        exact: bool,
+        progress: Callable[[int, int], bool] | None,
+    ) -> Matches | BatchMatches | None:
+        """Search across all view shards.
+
+        :return: Search results or None if no view shards exist.
+        """
+        if self._view_shards is not None and len(self._view_shards) > 0:
+            return self._view_shards.search(vectors, count=count, threads=threads, exact=exact, progress=progress)
+        return None
+
     # === Core Operations ===
 
     def add(
@@ -434,11 +463,8 @@ class ShardedIndex:
         view_results: Matches | BatchMatches | None = None
         active_results: Matches | BatchMatches | None = None
 
-        # Search view shards (via Indexes - doesn't support radius parameter)
-        if self._view_shards is not None and len(self._view_shards) > 0:
-            view_results = self._view_shards.search(
-                vectors, count=count, threads=threads, exact=exact, progress=progress
-            )
+        # Search view shards (via hook - Indexes or per-shard iteration)
+        view_results = self._search_view_shards(vectors, count, threads, exact, progress)
 
         # Search active shard (supports radius parameter)
         if self._active_shard is not None and len(self._active_shard) > 0:
@@ -805,21 +831,15 @@ class ShardedIndex:
             view_paths = shard_files[:-1]
             active_path = shard_files[-1]
 
-            # Create Indexes for view shards using workaround for usearch bug #643
-            # (Indexes(paths=[...]) segfaults, so we restore individually and merge)
-            # Keep references to prevent GC (Indexes.merge stores references, not copies)
+            # Restore view shards individually (workaround for usearch bug #643:
+            # Indexes(paths=[...]) segfaults). References kept to prevent GC.
             self._viewed_indexes = []
-            if view_paths:
-                view_shards = Indexes()
-                for p in view_paths:
-                    viewed = self._restore_shard(p, view=True)
-                    if viewed is None:  # pragma: no cover
-                        raise RuntimeError(f"Failed to restore shard: {p}")
-                    self._viewed_indexes.append(viewed)
-                    view_shards.merge(viewed)
-                self._view_shards = view_shards
-            else:
-                self._view_shards = None
+            self._view_shards = None
+            for p in view_paths:
+                viewed = self._restore_shard(p, view=True)
+                if viewed is None:  # pragma: no cover
+                    raise RuntimeError(f"Failed to restore shard: {p}")
+                self._register_view_shard(viewed)
 
             # Load active shard (writable) and track its path for save()
             active_shard = self._restore_shard(active_path, view=False)
@@ -862,9 +882,7 @@ class ShardedIndex:
     @property
     def size(self) -> int:
         """Total number of vectors across all shards."""
-        total = 0
-        if self._view_shards is not None:
-            total += len(self._view_shards)
+        total = sum(len(idx) for idx in self._viewed_indexes)
         if self._active_shard is not None:
             total += len(self._active_shard)
         return total
@@ -1200,18 +1218,11 @@ class ShardedIndex:
         # Invalidate cache since new shard file was created
         self._invalidate_shard_cache()
 
-        # Load the saved shard in view mode and merge into Indexes
-        # Workaround for usearch bug #643: Indexes(paths=[...]) segfaults
-        # Keep reference to prevent GC (Indexes.merge stores references, not copies)
+        # Load the saved shard in view mode and register it
         viewed_shard = self._restore_shard(shard_path, view=True)
         if viewed_shard is None:  # pragma: no cover
             raise RuntimeError(f"Failed to restore shard: {shard_path}")
-        self._viewed_indexes.append(viewed_shard)
-        view_shards = self._view_shards
-        if view_shards is None:
-            view_shards = Indexes()
-            self._view_shards = view_shards
-        view_shards.merge(viewed_shard)
+        self._register_view_shard(viewed_shard)
 
         # Create new active shard and reset size check countdown
         self._active_shard = self._create_shard()
@@ -1354,3 +1365,175 @@ class ShardedIndex:
     def __repr__(self) -> str:
         """Return string representation of the sharded index."""
         return f"ShardedIndex({self.size} vectors in {self.shard_count} shards, ndim={self.ndim}, path={self._path})"
+
+
+class _UuidKeyMixin:
+    """Mixin providing 128-bit UUID key handling hooks and validation.
+
+    Overrides the 6 key-handling hooks on ShardedIndex for bytes(16) / V16 keys,
+    adds strict validation on add(), and widens dispatch on get/contains/count
+    to catch malformed keys before they reach the bloom filter fast-path.
+
+    Only used via multiple inheritance with ShardedIndex (or its subclasses).
+    """
+
+    # Attributes/methods provided by ShardedIndex at runtime (declared for type checking)
+    _viewed_indexes: list[Index]
+    _merge_search_results: Callable[..., Matches | BatchMatches]
+
+    # --- View shard hook overrides ---
+
+    def _register_view_shard(self, shard: Index) -> None:
+        """Register view shard without Indexes merge (not compatible with uuid keys)."""
+        self._viewed_indexes.append(shard)
+
+    def _search_view_shards(
+        self,
+        vectors: NDArray[Any],
+        count: int,
+        threads: int,
+        exact: bool,
+        progress: Callable[[int, int], bool] | None,
+    ) -> Matches | BatchMatches | None:
+        """Search each viewed shard individually and merge results."""
+        if not self._viewed_indexes:
+            return None
+        results = []
+        for idx in self._viewed_indexes:
+            if len(idx) > 0:  # pragma: no branch - viewed shards are never empty
+                r = idx.search(vectors, count=count, threads=threads, exact=exact, progress=progress)
+                results.append(r)
+        if not results:
+            return None  # pragma: no cover - viewed shards are never empty in practice
+        if len(results) == 1:
+            return results[0]
+        is_single = vectors.ndim == 1
+        return self._merge_search_results(results, count, float("inf"), is_single)
+
+    # --- Key handling hook overrides ---
+
+    def _is_single_key(self, keys: Any) -> bool:
+        """Check if keys is a single bytes key."""
+        return isinstance(keys, bytes)
+
+    def _bloom_key(self, key: Any) -> bytes:
+        """Convert a single key to bloom filter format."""
+        return bytes(key)
+
+    def _bloom_keys(self, keys_arr: NDArray) -> list[bytes]:
+        """Convert a V16 key array to bloom filter batch format."""
+        return [bytes(k) for k in keys_arr]
+
+    def _normalize_batch_keys(self, keys: Any) -> NDArray:
+        """Normalize batch keys to V16 numpy array."""
+        if isinstance(keys, np.ndarray):
+            if keys.dtype == UUID_DTYPE:
+                return keys
+            raise ValueError(f"Batch keys must have dtype 'V16', got {keys.dtype}")
+        try:
+            keys_list = list(keys)
+        except TypeError:
+            raise ValueError(f"UUID keys must be bytes(16) or iterable of bytes(16), got {type(keys).__name__}")
+        if keys_list and not all(isinstance(k, bytes) and len(k) == 16 for k in keys_list):
+            raise ValueError("All batch keys must be bytes of length 16")
+        return np.array(keys_list, dtype=UUID_DTYPE)
+
+    def _shard_batch_keys(self, keys_arr: NDArray) -> Any:
+        """Convert batch key array to format for usearch shard operations."""
+        return keys_arr  # usearch uuid mode accepts V16 arrays directly
+
+    @property
+    def _key_dtype(self) -> np.dtype:
+        """NumPy dtype for 128-bit keys."""
+        return UUID_DTYPE
+
+    # --- Validation on write path ---
+
+    def add(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> Any:
+        """Add vectors with strict 128-bit key validation.
+
+        :param keys: bytes(16) key or V16 ndarray batch
+        :param vectors: Vector or batch of vectors to add
+        :return: Key(s) for added vectors
+        :raises ValueError: If keys is None, wrong type, or wrong length
+        """
+        if keys is None:
+            raise ValueError("Auto-key generation not supported for 128-bit keys")
+        if isinstance(keys, bytes):
+            if len(keys) != 16:
+                raise ValueError(f"UUID key must be exactly 16 bytes, got {len(keys)}")
+        elif isinstance(keys, np.ndarray):
+            if keys.dtype != UUID_DTYPE:
+                raise ValueError(f"Batch keys must have dtype 'V16', got {keys.dtype}")
+        else:
+            raise ValueError("UUID keys must be bytes(16) or np.ndarray with dtype 'V16'")
+        return super().add(keys, vectors, **kwargs)  # type: ignore[misc]
+
+    # --- Validation on read paths ---
+
+    def _check_single_key(self, key: Any) -> None:
+        """Validate a single bytes key.
+
+        :raises ValueError: If key is not bytes of length 16
+        """
+        if not isinstance(key, bytes) or len(key) != 16:
+            raise ValueError(f"UUID key must be bytes of length 16, got {type(key).__name__}")
+
+    def get(self, keys: Any, dtype: Any = None) -> Any:
+        """Retrieve vectors with single-key validation."""
+        if self._is_single_key(keys):
+            self._check_single_key(keys)
+        return super().get(keys, dtype=dtype)  # type: ignore[misc]
+
+    def contains(self, keys: Any) -> Any:
+        """Check key existence with single-key validation."""
+        if self._is_single_key(keys):
+            self._check_single_key(keys)
+        return super().contains(keys)  # type: ignore[misc]
+
+    def count(self, keys: Any) -> Any:
+        """Count key occurrences with single-key validation."""
+        if self._is_single_key(keys):
+            self._check_single_key(keys)
+        return super().count(keys)  # type: ignore[misc]
+
+
+class ShardedIndex128(_UuidKeyMixin, ShardedIndex):
+    """Sharded vector index with 128-bit UUID keys.
+
+    Uses usearch's key_kind="uuid" for 128-bit composite keys represented as
+    bytes(16) for single keys and np.dtype('V16') arrays for batches.
+
+    Auto-generation of keys (keys=None) is not supported — all keys must be
+    provided explicitly.
+    """
+
+    def __init__(self, *, path: str | os.PathLike, **kwargs: Any) -> None:
+        """Initialize a 128-bit sharded index.
+
+        :param path: Directory path for shard storage
+        :param kwargs: Passed to ShardedIndex (key_kind is absorbed if present)
+        """
+        kwargs.pop("key_kind", None)
+        super().__init__(path=path, **kwargs)
+
+    def _create_shard(self) -> Index:
+        """Create a uuid-keyed shard."""
+        return Index(**self._config, key_kind="uuid")
+
+    def _restore_shard(self, path: Path, view: bool) -> Index | None:
+        """Restore a uuid-keyed shard from disk."""
+        meta = Index.metadata(str(path))
+        if meta is None:  # pragma: no cover
+            return None
+        idx = Index(
+            ndim=meta["dimensions"],
+            metric=meta["kind_metric"],
+            dtype=meta["kind_scalar"],
+            key_kind="uuid",
+        )
+        if view:
+            idx.view(str(path))
+        else:
+            idx.load(str(path))
+        return idx

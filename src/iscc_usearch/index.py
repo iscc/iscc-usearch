@@ -34,6 +34,11 @@ class Index(_Index):
         if keys is None:
             raise ValueError("upsert() requires explicit keys. Auto-generation (keys=None) is not supported.")
 
+        from usearch.index import ScalarKind
+
+        if getattr(self, "_key_kind", None) == ScalarKind.UUID:
+            raise NotImplementedError("upsert() does not support 128-bit UUID keys")
+
         # Normalize inputs
         keys_arr = np.atleast_1d(np.asarray(keys, dtype=np.uint64))
         vectors_arr = np.atleast_2d(np.asarray(vectors))
