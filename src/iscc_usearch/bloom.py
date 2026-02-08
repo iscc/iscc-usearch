@@ -77,30 +77,34 @@ class ScalableBloomFilter:
         """Number of bloom filters in the chain."""
         return len(self._filters)
 
-    def add(self, key: int) -> None:
+    def add(self, key: int | bytes) -> None:
         """Add a single key to the bloom filter.
 
-        :param key: Integer key to add (uint64)
+        :param key: Integer or bytes key to add
         """
         # Check if we need to grow (when current filter is "full")
         current_filter_count = self._count - sum(self._capacities[:-1])
         if current_filter_count >= self._capacities[-1]:
             self._add_filter()
 
-        self._filters[-1].add_int(key)
+        if isinstance(key, bytes):
+            self._filters[-1].add_bytes(key)
+        else:
+            self._filters[-1].add_int(key)
         self._count += 1
 
-    def add_batch(self, keys: Sequence[int]) -> None:
+    def add_batch(self, keys: Sequence[int] | Sequence[bytes]) -> None:
         """Add multiple keys to the bloom filter efficiently.
 
         Uses native batch operations and handles capacity growth properly.
 
-        :param keys: Sequence of integer keys to add
+        :param keys: Sequence of integer or bytes keys to add
         """
-        if not keys:
+        if len(keys) == 0:
             return
 
         keys_list = list(keys) if not isinstance(keys, list) else keys
+        is_bytes = isinstance(keys_list[0], bytes)
         remaining = keys_list
 
         while remaining:
@@ -119,41 +123,55 @@ class ScalableBloomFilter:
             remaining = remaining[space_left:]
 
             # Add batch to current filter using native operation
-            self._filters[-1].add_int_batch(batch)
+            if is_bytes:
+                self._filters[-1].add_bytes_batch(batch)
+            else:
+                self._filters[-1].add_int_batch(batch)
             self._count += len(batch)
 
-    def contains(self, key: int) -> bool:
+    def contains(self, key: int | bytes) -> bool:
         """Check if a key might be in the filter.
 
-        :param key: Integer key to check
+        :param key: Integer or bytes key to check
         :return: False if definitely not present, True if possibly present
         """
         # Check all filters - return True if any says "maybe"
         # Check newest first (most likely location for recent keys)
-        for f in reversed(self._filters):
-            if f.contains_int(key):
-                return True
+        if isinstance(key, bytes):
+            for f in reversed(self._filters):
+                if f.contains_bytes(key):
+                    return True
+        else:
+            for f in reversed(self._filters):
+                if f.contains_int(key):
+                    return True
         return False
 
-    def contains_batch(self, keys: Sequence[int]) -> list[bool]:
+    def contains_batch(self, keys: Sequence[int] | Sequence[bytes]) -> list[bool]:
         """Check if multiple keys might be in the filter.
 
         Uses native Rust batch operations for throughput. Each filter in the
         chain is checked via a single batch call, and results are OR-combined.
 
-        :param keys: Sequence of integer keys to check
+        :param keys: Sequence of integer or bytes keys to check
         :return: List of booleans (False=definitely not, True=possibly present)
         """
-        if not keys:
+        if len(keys) == 0:
             return []
         keys_list = list(keys) if not isinstance(keys, list) else keys
+        is_bytes = isinstance(keys_list[0], bytes)
         # Fast path: single filter (most common case)
         if len(self._filters) == 1:
+            if is_bytes:
+                return self._filters[0].contains_bytes_batch(keys_list)
             return self._filters[0].contains_int_batch(keys_list)
         # Multiple filters: check each (newest first) and OR results
         result = [False] * len(keys_list)
         for f in reversed(self._filters):
-            filter_results = f.contains_int_batch(keys_list)
+            if is_bytes:
+                filter_results = f.contains_bytes_batch(keys_list)
+            else:
+                filter_results = f.contains_int_batch(keys_list)
             for i, maybe in enumerate(filter_results):
                 if maybe:
                     result[i] = True
@@ -255,7 +273,7 @@ class ScalableBloomFilter:
         """Return approximate number of elements."""
         return self._count
 
-    def __contains__(self, key: int) -> bool:
+    def __contains__(self, key: int | bytes) -> bool:
         """Support 'in' operator."""
         return self.contains(key)
 

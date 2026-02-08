@@ -38,7 +38,7 @@ dependencies = [
     "numba>=0.62.1",
     "loguru>=0.7.3",
     "fastbloom-rs>=0.5.10",
-    "usearch-iscc>=2.23.3",
+    "usearch-iscc>=2.23.5",
 ]
 
 [project.urls]
