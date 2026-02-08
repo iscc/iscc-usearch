@@ -326,7 +326,7 @@ class ShardedNphdIndex(ShardedIndex):
         :return: Unpadded vector(s) or None for missing keys
         """
         # Single key case
-        if isinstance(keys, int):
+        if self._is_single_key(keys):
             result = super().get(keys, dtype=dtype)
             if result is None:
                 return None

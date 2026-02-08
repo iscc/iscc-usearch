@@ -34,6 +34,9 @@ BLOOM_FILENAME = "bloom.isbf"
 # Default shard size: 1GB
 DEFAULT_SHARD_SIZE = 1024 * 1024 * 1024
 
+# NumPy dtype for 128-bit UUID keys
+UUID_DTYPE = np.dtype("V16")
+
 # Mapping from ScalarKind to numpy dtype
 SCALAR_KIND_TO_NUMPY_DTYPE: dict[ScalarKind, np.dtype] = {
     ScalarKind.B1: np.dtype(np.uint8),
@@ -104,7 +107,7 @@ class ShardedIndexedKeys:
         """
         if isinstance(index, slice):
             # Handle slicing by materializing the requested range
-            arr = np.fromiter(self, dtype=np.uint64, count=len(self))
+            arr = np.asarray(self)
             return arr[index]
         else:
             # Handle single index
@@ -126,14 +129,23 @@ class ShardedIndexedKeys:
 
             raise IndexError("index out of range")  # pragma: no cover
 
-    def __array__(self, dtype: Any = None) -> NDArray[np.uint64]:
-        """Support numpy array conversion.
+    def __array__(self, dtype: Any = None) -> NDArray:
+        """Convert to numpy array by concatenating shard key arrays.
 
-        :param dtype: Optional dtype (defaults to uint64)
+        :param dtype: Optional dtype override
         :return: Numpy array of all keys
         """
-        result = np.fromiter(self, dtype=np.uint64, count=len(self))
-        if dtype is not None and dtype != np.uint64:
+        arrays = []
+        for idx in self._index._viewed_indexes:
+            if len(idx) > 0:
+                arrays.append(np.asarray(idx.keys))
+        if self._index._active_shard is not None and len(self._index._active_shard) > 0:
+            arrays.append(np.asarray(self._index._active_shard.keys))
+        if not arrays:
+            result = np.array([], dtype=self._index._key_dtype)
+        else:
+            result = np.concatenate(arrays)
+        if dtype is not None and dtype != result.dtype:
             return result.astype(dtype)
         return result
 
@@ -317,6 +329,33 @@ class ShardedIndex:
             if self._use_bloom:
                 self._bloom = ScalableBloomFilter()
 
+    # --- Key handling hooks (override in _UuidKeyMixin for uuid keys) ---
+
+    def _is_single_key(self, keys: Any) -> bool:
+        """Check if keys represents a single key (vs a batch)."""
+        return isinstance(keys, int)
+
+    def _bloom_key(self, key: Any) -> int:
+        """Convert a single key to bloom filter format."""
+        return int(key)
+
+    def _bloom_keys(self, keys_arr: NDArray) -> list[int]:
+        """Convert a key array to bloom filter batch format."""
+        return keys_arr.tolist()
+
+    def _normalize_batch_keys(self, keys: Any) -> NDArray:
+        """Normalize batch keys to the appropriate numpy array type."""
+        return np.asarray(keys, dtype=np.uint64)
+
+    def _shard_batch_keys(self, keys_arr: NDArray) -> Any:
+        """Convert batch key array to format for usearch shard operations."""
+        return keys_arr.tolist()
+
+    @property
+    def _key_dtype(self) -> np.dtype:
+        """NumPy dtype for keys."""
+        return np.dtype(np.uint64)
+
     # === Core Operations ===
 
     def add(
@@ -349,7 +388,7 @@ class ShardedIndex:
         # Note: usearch always returns keys as numpy array, even for single adds
         if self._bloom is not None:
             for key in np.atleast_1d(result):
-                self._bloom.add(int(key))
+                self._bloom.add(self._bloom_key(key))
 
         # Amortized rotation check: only compute serialized_length when countdown expires
         count_added = len(np.atleast_1d(result))
@@ -440,7 +479,7 @@ class ShardedIndex:
         :param dtype: Optional data type for returned vectors
         :return: Vector(s) or None for missing keys
         """
-        if isinstance(keys, int):
+        if self._is_single_key(keys):
             return self._get_single(keys, dtype)
         return self._get_batch(keys, dtype)
 
@@ -465,7 +504,7 @@ class ShardedIndex:
 
     def _get_batch(self, keys: Any, dtype: Any = None) -> list:
         """Get multiple vectors by keys from any shard."""
-        keys_arr = np.asarray(keys, dtype=np.uint64)
+        keys_arr = self._normalize_batch_keys(keys)
         n = len(keys_arr)
         if n == 0:
             return []
@@ -475,7 +514,7 @@ class ShardedIndex:
 
         # Fast path: use bloom filter to mark definitely-not-present keys as "found" (None)
         if self._use_bloom and self._bloom is not None:
-            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            bloom_results = self._bloom.contains_batch(self._bloom_keys(keys_arr))
             # Keys that bloom says definitely don't exist - mark as "done" (result stays None)
             for i, maybe_present in enumerate(bloom_results):
                 if not maybe_present:
@@ -489,7 +528,7 @@ class ShardedIndex:
             unfound_keys = keys_arr[unfound_indices]
 
             # Check which keys exist in this shard
-            exists = np.asarray(idx.contains(unfound_keys.tolist()), dtype=bool)
+            exists = np.asarray(idx.contains(self._shard_batch_keys(unfound_keys)), dtype=bool)
             if not exists.any():
                 return
 
@@ -498,7 +537,7 @@ class ShardedIndex:
             exist_keys = unfound_keys[exist_local_indices]
             exist_orig_indices = unfound_indices[exist_local_indices]
 
-            vectors = idx.get(exist_keys.tolist(), dtype=dtype)
+            vectors = idx.get(self._shard_batch_keys(exist_keys), dtype=dtype)
 
             # Store results
             for orig_idx, vec in zip(exist_orig_indices, vectors):
@@ -525,7 +564,7 @@ class ShardedIndex:
         :param keys: Integer key(s) to check
         :return: Boolean or array of booleans
         """
-        if isinstance(keys, int):
+        if self._is_single_key(keys):
             return self._contains_single(keys)
         return self._contains_batch(keys)
 
@@ -550,7 +589,7 @@ class ShardedIndex:
 
     def _contains_batch(self, keys: Any) -> NDArray[np.bool_]:
         """Check if multiple keys exist in any shard (OR aggregation)."""
-        keys_arr = np.asarray(keys)
+        keys_arr = self._normalize_batch_keys(keys)
         if len(keys_arr) == 0:
             return np.array([], dtype=bool)
 
@@ -559,7 +598,7 @@ class ShardedIndex:
         # Fast path: use bloom filter to identify definitely-not-present keys
         if self._use_bloom and self._bloom is not None:
             # Check which keys might exist (bloom says "maybe")
-            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            bloom_results = self._bloom.contains_batch(self._bloom_keys(keys_arr))
             maybe_present = np.array(bloom_results, dtype=bool)
 
             # If all keys are definitely not present, return early
@@ -577,14 +616,14 @@ class ShardedIndex:
 
         # Check active shard
         if self._active_shard is not None:
-            active_result = self._active_shard.contains(keys_to_check)
+            active_result = self._active_shard.contains(self._shard_batch_keys(keys_to_check))
             partial_result |= np.asarray(active_result, dtype=bool)
 
         # Check view shards
         for idx in self._viewed_indexes:
             if partial_result.all():
                 break  # Short-circuit: all keys found
-            shard_result = idx.contains(keys_to_check)
+            shard_result = idx.contains(self._shard_batch_keys(keys_to_check))
             partial_result |= np.asarray(shard_result, dtype=bool)
 
         # Map partial results back to full result array
@@ -602,7 +641,7 @@ class ShardedIndex:
         :param keys: Integer key(s) to count
         :return: Count or array of counts
         """
-        if isinstance(keys, int):
+        if self._is_single_key(keys):
             return self._count_single(keys)
         return self._count_batch(keys)
 
@@ -625,7 +664,7 @@ class ShardedIndex:
 
     def _count_batch(self, keys: Any) -> NDArray[np.uint64]:
         """Count occurrences of multiple keys across all shards (sum)."""
-        keys_arr = np.asarray(keys)
+        keys_arr = self._normalize_batch_keys(keys)
         if len(keys_arr) == 0:
             return np.array([], dtype=np.uint64)
 
@@ -633,7 +672,7 @@ class ShardedIndex:
 
         # Fast path: use bloom filter to skip definitely-not-present keys
         if self._use_bloom and self._bloom is not None:
-            bloom_results = self._bloom.contains_batch(keys_arr.tolist())
+            bloom_results = self._bloom.contains_batch(self._bloom_keys(keys_arr))
             maybe_present = np.array(bloom_results, dtype=bool)
             if not maybe_present.any():
                 return total
@@ -646,10 +685,12 @@ class ShardedIndex:
         partial_total = np.zeros(len(keys_to_count), dtype=np.uint64)
 
         if self._active_shard is not None:
-            partial_total += np.asarray(self._active_shard.count(keys_to_count), dtype=np.uint64)
+            partial_total += np.asarray(
+                self._active_shard.count(self._shard_batch_keys(keys_to_count)), dtype=np.uint64
+            )
 
         for idx in self._viewed_indexes:
-            partial_total += np.asarray(idx.count(keys_to_count), dtype=np.uint64)
+            partial_total += np.asarray(idx.count(self._shard_batch_keys(keys_to_count)), dtype=np.uint64)
 
         total[indices_to_count] = partial_total
         return total
@@ -714,11 +755,11 @@ class ShardedIndex:
                 continue
 
             # Get all keys from this shard as numpy array
-            shard_keys = np.asarray(idx.keys, dtype=np.uint64)
+            shard_keys = np.asarray(idx.keys, dtype=self._key_dtype)
             shard_count = len(shard_keys)
 
             # Add to bloom filter using proper batch operation (handles capacity/growth)
-            self._bloom.add_batch(shard_keys.tolist())
+            self._bloom.add_batch(self._bloom_keys(shard_keys))
             count += shard_count
 
             if log_progress:
@@ -1180,13 +1221,13 @@ class ShardedIndex:
         """Return empty results in the appropriate format."""
         if is_single:
             return Matches(
-                keys=np.array([], dtype=np.uint64),
+                keys=np.array([], dtype=self._key_dtype),
                 distances=np.array([], dtype=np.float32),
             )
         else:
             num_queries = vectors.shape[0]
             return BatchMatches(
-                keys=np.zeros((num_queries, count), dtype=np.uint64),
+                keys=np.zeros((num_queries, count), dtype=self._key_dtype),
                 distances=np.full((num_queries, count), np.inf, dtype=np.float32),
                 counts=np.zeros(num_queries, dtype=np.int64),
             )
@@ -1254,8 +1295,10 @@ class ShardedIndex:
             valid_mask = sorted_distances <= radius
             # Count valid entries per row, capped at count
             counts = np.minimum(valid_mask.sum(axis=1), count)
-            # Invalidate entries beyond radius
-            sorted_keys = np.where(valid_mask, sorted_keys, 0)
+            # Invalidate entries beyond radius (dtype-safe zero-fill for V16 compat)
+            result_keys = np.zeros_like(sorted_keys)
+            result_keys[valid_mask] = sorted_keys[valid_mask]
+            sorted_keys = result_keys
             sorted_distances = np.where(valid_mask, sorted_distances, np.inf)
         else:
             # Count non-inf entries per row, capped at count
@@ -1295,8 +1338,9 @@ class ShardedIndex:
             mask = batch.distances <= radius
             counts = mask.sum(axis=1).astype(np.int64)
 
-            # Apply mask: set invalid entries to 0/inf
-            keys_array = np.where(mask, batch.keys, 0)
+            # Apply mask: set invalid entries to 0/inf (dtype-safe zero-fill for V16 compat)
+            keys_array = np.zeros_like(batch.keys)
+            keys_array[mask] = batch.keys[mask]
             distances_array = np.where(mask, batch.distances, np.inf)
 
             return BatchMatches(

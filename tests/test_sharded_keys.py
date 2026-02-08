@@ -209,6 +209,49 @@ def test_keys_numpy_conversion(tmp_path):
     assert set(keys_array.tolist()) == {1, 2, 5}
 
 
+def test_keys_numpy_conversion_empty_index(tmp_path):
+    """Empty index converts to empty numpy array with correct dtype."""
+    idx = ShardedIndex(
+        ndim=32,
+        metric=MetricKind.Hamming,
+        dtype=ScalarKind.B1,
+        path=tmp_path / "index",
+        bloom_filter=False,
+    )
+
+    keys_array = np.asarray(idx.keys)
+
+    assert isinstance(keys_array, np.ndarray)
+    assert keys_array.dtype == np.uint64
+    assert len(keys_array) == 0
+
+
+def test_keys_numpy_conversion_with_viewed_shards(tmp_path):
+    """Keys from viewed shards are included in numpy array conversion."""
+    idx = ShardedIndex(
+        ndim=32,
+        metric=MetricKind.Hamming,
+        dtype=ScalarKind.B1,
+        path=tmp_path / "index",
+        shard_size=500,  # Small to force rotation
+        bloom_filter=False,
+    )
+
+    # Add entries to force shard rotation (creates viewed shards)
+    for i in range(50):
+        idx.add(i, np.array([i % 256, (i + 1) % 256, (i + 2) % 256, (i + 3) % 256], dtype=np.uint8))
+
+    # Verify we have viewed shards
+    assert len(idx._viewed_indexes) > 0
+
+    keys_array = np.asarray(idx.keys)
+
+    assert isinstance(keys_array, np.ndarray)
+    assert keys_array.dtype == np.uint64
+    assert len(keys_array) == 50
+    assert set(keys_array.tolist()) == set(range(50))
+
+
 def test_keys_numpy_conversion_with_dtype(tmp_path):
     """Keys can be converted to numpy array with specific dtype."""
     idx = ShardedIndex(
