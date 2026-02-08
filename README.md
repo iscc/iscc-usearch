@@ -101,13 +101,13 @@ print(matches.distances)  # Cosine distances
 
 ## Documentation
 
-Full documentation: **https://iscc.github.io/iscc-usearch/**
+Full documentation: **https://usearch.iscc.codes/**
 
-- [Tutorials](https://iscc.github.io/iscc-usearch/tutorials/) - Step-by-step getting started guides
-- [How-to Guides](https://iscc.github.io/iscc-usearch/howto/) - Persistence, sharding, upsert, bloom filters
-- [Explanation](https://iscc.github.io/iscc-usearch/explanation/) - NPHD metric, architecture, performance
-- [API Reference](https://iscc.github.io/iscc-usearch/reference/api/) - Auto-generated from source
-- [Development](https://iscc.github.io/iscc-usearch/development/) - Dev setup, testing, and contribution guidelines
+- [Tutorials](https://usearch.iscc.codes/tutorials/) - Step-by-step getting started guides
+- [How-to Guides](https://usearch.iscc.codes/howto/) - Persistence, sharding, upsert, bloom filters
+- [Explanation](https://usearch.iscc.codes/explanation/) - NPHD metric, architecture, performance
+- [API Reference](https://usearch.iscc.codes/reference/api/) - Auto-generated from source
+- [Development](https://usearch.iscc.codes/development/) - Dev setup, testing, and contribution guidelines
 
 ## License
 

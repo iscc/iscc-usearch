@@ -42,8 +42,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://iscc.github.io/iscc-usearch/"
-Documentation = "https://iscc.github.io/iscc-usearch/"
+Homepage = "https://usearch.iscc.codes/"
+Documentation = "https://usearch.iscc.codes/"
 Repository = "https://github.com/iscc/iscc-usearch"
 Changelog = "https://github.com/iscc/iscc-usearch/blob/main/CHANGELOG.md"
 Issues = "https://github.com/iscc/iscc-usearch/issues"

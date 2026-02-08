@@ -4,9 +4,11 @@ icon: lucide/gauge
 
 # Performance
 
-`iscc-usearch` depends on a [patched USearch fork](https://github.com/iscc/usearch) (v2.23.3)
-tuned for ISCC-specific workloads. USearch is a fast ANNS library; the fork adds support for heavy
-sharding, read-mostly access patterns, and large memory-mapped indexes that ISCC indexing requires.
+`iscc-usearch` depends on a [patched USearch fork](https://github.com/iscc/usearch) tuned for
+ISCC-specific workloads. USearch is a fast ANNS library; the fork adds support for heavy sharding,
+read-mostly access patterns, and large memory-mapped indexes that ISCC indexing requires. The
+required fork version is declared in
+[`pyproject.toml`](https://github.com/iscc/iscc-usearch/blob/main/pyproject.toml).
 
 ## Patched USearch fork
 
@@ -218,7 +220,8 @@ The defaults work well for most workloads. Increase `expansion_search` if recall
 increase `connectivity` for better recall at the cost of memory.
 
 [^bench]: Median of 5 runs after warmup. Stock usearch 2.23.0 (PyPI) vs. ISCC fork 2.23.2
-    (current fork is 2.23.3). Windows 10, Intel i7-7700K, 64 GB RAM, Python 3.12.
+    (benchmark was run on an earlier fork version). Windows 10, Intel i7-7700K, 64 GB RAM,
+    Python 3.12.
 
 [^bloom]: Median of 2,000 iterations per operation. 5,000 vectors/shard, 256D float32. Same
     hardware as above. Reproducible via `uv run python scripts/benchmark_bloom_vs_native.py`.

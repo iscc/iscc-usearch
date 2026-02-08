@@ -104,8 +104,9 @@ sharded indexes (`ShardedIndex128`, `ShardedNphdIndex128`) for bloom filter look
 bloom = ScalableBloomFilter()
 
 # bytes keys work the same as int keys
-bloom.add(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f")
-print(bloom.contains(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"))  # True
+key = bytes(range(16))
+bloom.add(key)
+print(bloom.contains(key))  # True
 
 # Batch operations with bytes keys
 keys = [b"\x00" * 16, b"\xff" * 16]

@@ -59,3 +59,4 @@ Initial release of iscc-usearch.
 - Python 3.12, 3.13, and 3.14 support
 
 [0.1.0]: https://github.com/iscc/iscc-usearch/releases/tag/0.1.0
+[unreleased]: https://github.com/iscc/iscc-usearch/compare/0.1.0...HEAD

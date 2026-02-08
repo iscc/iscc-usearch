@@ -7,4 +7,5 @@
 *[NPHD]: Normalized Prefix Hamming Distance
 *[RAM]: Random Access Memory
 *[UUID]: Universally Unique Identifier (128-bit)
+*[QPS]: Queries Per Second
 *[XOR]: Exclusive OR

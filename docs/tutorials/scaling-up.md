@@ -37,23 +37,24 @@ The `path` directory is created automatically. Shard files appear as the index g
 
 ## Add mixed-resolution vectors
 
-Just like `NphdIndex`, you can mix 64-bit, 128-bit, and 256-bit vectors:
+Just like `NphdIndex`, you can mix 64-bit, 128-bit, and 256-bit vectors. Batch insertion is the
+idiomatic high-performance pattern:
 
 ```python
-# 64-bit vectors (8 bytes each)
-for i in range(100):
-    vec = np.random.randint(0, 256, size=8, dtype=np.uint8)
-    index.add(i, vec)
+# Batch add -- 64-bit vectors (8 bytes each)
+keys_64 = list(range(100))
+vecs_64 = np.random.randint(0, 256, size=(100, 8), dtype=np.uint8)
+index.add(keys_64, vecs_64)
 
-# 128-bit vectors (16 bytes each)
-for i in range(100, 200):
-    vec = np.random.randint(0, 256, size=16, dtype=np.uint8)
-    index.add(i, vec)
+# Batch add -- 128-bit vectors (16 bytes each)
+keys_128 = list(range(100, 200))
+vecs_128 = np.random.randint(0, 256, size=(100, 16), dtype=np.uint8)
+index.add(keys_128, vecs_128)
 
-# 256-bit vectors (32 bytes each)
-for i in range(200, 300):
-    vec = np.random.randint(0, 256, size=32, dtype=np.uint8)
-    index.add(i, vec)
+# Batch add -- 256-bit vectors (32 bytes each)
+keys_256 = list(range(200, 300))
+vecs_256 = np.random.randint(0, 256, size=(100, 32), dtype=np.uint8)
+index.add(keys_256, vecs_256)
 ```
 
 When the active shard exceeds `shard_size`, it is saved to disk and reopened as a read-only

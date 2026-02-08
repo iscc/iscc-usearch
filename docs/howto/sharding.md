@@ -125,6 +125,11 @@ raise `NotImplementedError`:
 - `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.
 - `upsert()` -- not supported (128-bit variants also raise `NotImplementedError`).
 
+!!! warning "Single-process only"
+
+    Running multiple processes against the same index files may corrupt data. See
+    [Architecture](../explanation/architecture.md#concurrency-model) for details.
+
 !!! note "Required parameters"
 
     When creating a new sharded index (no existing shards on disk), `max_dim` is required.

@@ -25,6 +25,7 @@ repos:
     rev: 1.0.0
     hooks:
       - id: mdformat
+        exclude: docs/reference/api\.md
         additional_dependencies:
           - "mdformat-mkdocs[recommended]"
 

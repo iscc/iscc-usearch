@@ -91,7 +91,7 @@ query = np.random.randint(0, 256, size=32, dtype=np.uint8)
 matches = index.search(query, count=10)
 
 for key_bytes, dist in zip(matches.keys, matches.distances):
-    print(f"Key {key_bytes.hex()}: distance = {dist:.4f}")
+    print(f"Key {bytes(key_bytes).hex()}: distance = {dist:.4f}")
 ```
 
 ## Retrieve by key

@@ -119,6 +119,18 @@ missing = index.get(999)
 print(missing)  # None
 ```
 
+## Check key existence
+
+Check whether a key exists in the index without retrieving its vector:
+
+```python
+print(index.contains(1))  # True
+print(index.contains(999))  # False
+
+# Python 'in' operator works too
+print(1 in index)  # True
+```
+
 ## Save and reload
 
 Save the index to a file and load it back later:
@@ -140,6 +152,11 @@ print(matches.keys)
     For read-only access with lower memory usage, use `restore(..., view=True)` to memory-map the
     file instead of loading it fully into RAM. See the
     [Persistence how-to](../howto/persistence.md) for details.
+
+!!! warning "Single-process only"
+
+    Running multiple processes against the same index files may corrupt data. See
+    [Architecture](../explanation/architecture.md#concurrency-model) for details.
 
 ## Next steps
 

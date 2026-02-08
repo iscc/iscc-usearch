@@ -92,9 +92,10 @@ multiple platforms when possible.
 
 ## Patched usearch fork
 
-`iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch) (v2.23.3),
-published on PyPI as [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) and installed
-automatically as a regular dependency.
+`iscc-usearch` depends on a [patched usearch fork](https://github.com/iscc/usearch), published on
+PyPI as [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) and installed automatically as a
+regular dependency. The required version is declared in
+[`pyproject.toml`](https://github.com/iscc/iscc-usearch/blob/main/pyproject.toml).
 
 Each patch is maintained on a separate branch to facilitate upstream merging:
 

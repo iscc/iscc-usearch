@@ -79,12 +79,17 @@ classes stay clean.
 
 | Class                 | Var-len | Keys    | Shards | Upsert | Use case                              |
 | --------------------- | :-----: | ------- | :----: | :----: | ------------------------------------- |
-| `Index`               |    —    | uint64  |   —    |   ✓    | Fixed-length vectors, small datasets  |
 | `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    | ISCC codes, fits in RAM               |
 | `ShardedIndex`        |    —    | uint64  |   ✓    |   —    | Fixed-length vectors, large scale     |
 | `ShardedIndex128`     |    —    | 128-bit |   ✓    |   —    | Fixed-length vectors, 128-bit keys    |
 | `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   —    | ISCC codes, large scale (production)  |
 | `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   —    | ISCC codes, large scale, 128-bit keys |
+
+!!! note "About `Index`"
+
+    `Index` is an internal base class that wraps USearch's `Index` with upsert support. It is not
+    part of the public API and not exported in `__all__`. Use `NphdIndex` instead — it inherits
+    all of `Index`'s functionality and adds NPHD support.
 
 For most ISCC workloads, use **`NphdIndex`** for datasets that fit in RAM, or
 **`ShardedNphdIndex`** for datasets that exceed RAM or need consistent insert throughput. Use the
