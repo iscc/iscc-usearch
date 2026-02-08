@@ -109,6 +109,8 @@ Each patch is maintained on a separate branch to facilitate upstream merging:
     Fix `serialized_length` pybind11 default argument binding
 - [`fix-array-copy-keyword`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-array-copy-keyword) —
     Accept `copy` keyword in `IndexedKeys.__array__` for NumPy 2.0
+- [`python-128bit-keys`](https://github.com/iscc/usearch/compare/unum-cloud:main...python-128bit-keys) —
+    Add 128-bit (UUID) key support to `Index` and `Indexes` via `key_kind="uuid"`
 
 See the [Performance explanation](../explanation/performance.md) for details on the performance
 patches.
