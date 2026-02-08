@@ -104,6 +104,17 @@ for vec in index.vectors:
     pass
 ```
 
+## 128-bit key variants
+
+If your keys exceed 64 bits (e.g., composite `(iscc_id_body, chunk_index)` keys for simprint
+indexing), use the 128-bit variants:
+
+- `ShardedIndex128` — same as `ShardedIndex` but with `bytes(16)` keys
+- `ShardedNphdIndex128` — same as `ShardedNphdIndex` but with `bytes(16)` keys
+
+The API is identical except that keys are `bytes` of length 16 (single) or `np.dtype('V16')`
+arrays (batch) instead of integers. See the [UUID keys how-to](uuid-keys.md) for details.
+
 ## Limitations
 
 `ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. The following operations
@@ -112,6 +123,7 @@ raise `NotImplementedError`:
 - `remove()` -- vectors cannot be deleted.
 - `copy()` / `clear()` / `reset()` -- would require handling multiple files.
 - `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.
+- `upsert()` -- not supported (128-bit variants also raise `NotImplementedError`).
 
 !!! note "Required parameters"
 

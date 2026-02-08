@@ -6,4 +6,5 @@
 *[MRL]: Matryoshka Representation Learning
 *[NPHD]: Normalized Prefix Hamming Distance
 *[RAM]: Random Access Memory
+*[UUID]: Universally Unique Identifier (128-bit)
 *[XOR]: Exclusive OR

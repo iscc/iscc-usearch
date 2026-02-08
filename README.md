@@ -7,9 +7,9 @@
 
 **Larger-than-RAM writable HNSW indexes, and variable-length binary vector search.**
 
-`iscc-usearch` extends [USearch](https://github.com/unum-cloud/usearch) - a
+`iscc-usearch` is a Python library that extends [USearch](https://github.com/unum-cloud/usearch) - a
 [high-performance](https://github.com/unum-cloud/usearch#performance) HNSW library adopted by
-ClickHouse, LangChain, and others - with two independent capabilities:
+ClickHouse, LangChain, and others - with three independent capabilities:
 
 **Sharded HNSW indexes** (`ShardedIndex`) keep a single active shard in RAM for writes while
 completed shards are memory-mapped for reads. Works with any vector type and metric USearch
@@ -22,12 +22,17 @@ comparable distances. Purpose-built for [ISCC](https://iscc.codes) (ISO 24138) c
 fingerprints, also applicable to [Matryoshka embeddings](https://arxiv.org/abs/2205.13147),
 perceptual hashes, and locality-sensitive hashing.
 
+**128-bit UUID keys** (`ShardedIndex128`, `ShardedNphdIndex128`) extend the key space from 64-bit
+integers to 128-bit `bytes(16)` keys. Useful when your identifiers are UUIDs, 128-bit hashes, or
+structured multi-part keys that don't fit in a `uint64`.
+
 **Key features:**
 
 - **Bounded memory** - only one shard in RAM at a time, the rest memory-mapped
 - **Billions of vectors** - sharded indexes scale well beyond single-machine RAM
 - **Incremental writes** - append vectors without rebuilding the index
 - **Mixed bit-lengths** - 64-bit and 256-bit vectors coexist in the same index
+- **128-bit keys** - `bytes(16)` UUID keys when 64-bit integers are not enough
 - **Any distance metric** - user-defined metrics via USearch's plugin system
 - **Fast** - inherits USearch's HNSW engine, benchmarked at 10x the throughput of FAISS
 
@@ -37,11 +42,13 @@ perceptual hashes, and locality-sensitive hashing.
 
 ## Which index class?
 
-| Class              | Vector type | Variable length | Sharding | Upsert | Use when...                         |
-| ------------------ | ----------- | --------------- | -------- | ------ | ----------------------------------- |
-| `ShardedIndex`     | any         | no              | yes      | no     | Dataset exceeds RAM, any metric     |
-| `NphdIndex`        | binary      | yes             | no       | yes    | Binary variable-length, fits in RAM |
-| `ShardedNphdIndex` | binary      | yes             | yes      | no     | Binary variable-length, exceeds RAM |
+| Class                 | Var-len | Keys    | Shards | Use when...                          |
+| --------------------- | :-----: | ------- | :----: | ------------------------------------ |
+| `NphdIndex`           |    ✓    | uint64  |   —    | Binary variable-length, fits in RAM  |
+| `ShardedIndex`        |    —    | uint64  |   ✓    | Exceeds RAM, any metric              |
+| `ShardedIndex128`     |    —    | 128-bit |   ✓    | Same, with 128-bit keys              |
+| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    | Binary variable-length, exceeds RAM  |
+| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    | Binary variable-length, 128-bit keys |
 
 ## Installation
 

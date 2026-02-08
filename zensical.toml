@@ -21,6 +21,7 @@ nav = [
     { "How-to Guides" = [
         "howto/persistence.md",
         "howto/sharding.md",
+        "howto/uuid-keys.md",
         "howto/upsert.md",
         "howto/bloom-filters.md",
     ]},

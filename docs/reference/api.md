@@ -36,6 +36,27 @@ show_source: false
 heading_level: 3
 members_order: source
 
+## ShardedIndex128
+
+Sharded index with 128-bit UUID keys. Uses `bytes(16)` for single keys and `np.dtype('V16')`
+arrays for batches.
+
+::: iscc_usearch.ShardedIndex128
+options:
+show_source: false
+heading_level: 3
+members_order: source
+
+## ShardedNphdIndex128
+
+Sharded NPHD index with 128-bit UUID keys for variable-length vectors.
+
+::: iscc_usearch.ShardedNphdIndex128
+options:
+show_source: false
+heading_level: 3
+members_order: source
+
 ## ScalableBloomFilter
 
 Scalable bloom filter for efficient probabilistic key existence checks.

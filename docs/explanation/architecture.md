@@ -54,23 +54,42 @@ fingerprints. `NphdIndex` validates this at construction time.
 
 ## Index class hierarchy
 
-`iscc-usearch` provides four index classes. Two are single-file, two are sharded:
+`iscc-usearch` provides six index classes. Two are single-file, four are sharded:
+
+```
+Index                            (usearch wrapper, uint64 keys)
+└── NphdIndex                    (variable-length + NPHD metric)
+
+ShardedIndex                     (composition-based sharding, uint64 keys)
+├── ShardedIndex128              (128-bit UUID keys via _UuidKeyMixin)
+└── ShardedNphdIndex             (variable-length + NPHD metric)
+    └── ShardedNphdIndex128      (128-bit UUID keys via _UuidKeyMixin)
+```
 
 `NphdIndex` inherits from `Index` (which extends USearch's `Index`) and adds padding and the NPHD
 metric. `ShardedIndex` is a standalone composition-based class that manages multiple USearch indexes
 as shards. `ShardedNphdIndex` extends `ShardedIndex` with variable-length vector support and NPHD.
 
+The `128` variants add 128-bit key support using usearch's `key_kind="uuid"` mode. Keys are
+`bytes(16)` for single operations and `np.dtype('V16')` arrays for batches. All 128-bit logic
+concentrates in a `_UuidKeyMixin` that overrides key-handling hooks on `ShardedIndex` — the base
+classes stay clean.
+
 ### Choosing an index class
 
-| Class              | Single file | Variable length | Sharding | Upsert | Use case                             |
-| ------------------ | ----------- | --------------- | -------- | ------ | ------------------------------------ |
-| `Index`            | yes         | no              | no       | yes    | Fixed-length vectors, small datasets |
-| `NphdIndex`        | yes         | yes             | no       | yes    | ISCC codes, fits in RAM              |
-| `ShardedIndex`     | no          | no              | yes      | no     | Fixed-length vectors, large scale    |
-| `ShardedNphdIndex` | no          | yes             | yes      | no     | ISCC codes, large scale (production) |
+| Class                 | Var-len | Keys    | Shards | Upsert | Use case                              |
+| --------------------- | :-----: | ------- | :----: | :----: | ------------------------------------- |
+| `Index`               |    —    | uint64  |   —    |   ✓    | Fixed-length vectors, small datasets  |
+| `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    | ISCC codes, fits in RAM               |
+| `ShardedIndex`        |    —    | uint64  |   ✓    |   —    | Fixed-length vectors, large scale     |
+| `ShardedIndex128`     |    —    | 128-bit |   ✓    |   —    | Fixed-length vectors, 128-bit keys    |
+| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   —    | ISCC codes, large scale (production)  |
+| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   —    | ISCC codes, large scale, 128-bit keys |
 
 For most ISCC workloads, use **`NphdIndex`** for datasets that fit in RAM, or
-**`ShardedNphdIndex`** for datasets that exceed RAM or need consistent insert throughput.
+**`ShardedNphdIndex`** for datasets that exceed RAM or need consistent insert throughput. Use the
+`128` variants when you need keys beyond 64 bits — see the
+[UUID keys how-to](../howto/uuid-keys.md).
 
 ## Data flow
 

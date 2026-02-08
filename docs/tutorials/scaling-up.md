@@ -127,6 +127,8 @@ Completed shards are immutable. Only the highest-numbered shard is the active sh
 
 ## Next steps
 
+- **[128-bit UUID keys](../howto/uuid-keys.md)** -- Use `ShardedNphdIndex128` when 64-bit keys are
+    not enough.
 - **[Sharding how-to](../howto/sharding.md)** -- Shard size tuning and configuration.
 - **[Sharding design](../explanation/sharding-design.md)** -- Trade-offs and architecture.
 - **[Performance](../explanation/performance.md)** -- Benchmarks and optimization.

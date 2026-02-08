@@ -7,14 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ShardedIndex128` — sharded index with 128-bit UUID keys (`bytes(16)` / `np.dtype('V16')`)
+- `ShardedNphdIndex128` — sharded NPHD index with 128-bit UUID keys for variable-length vectors
+- `_UuidKeyMixin` providing key-handling hooks, validation, and dispatch for all 128-bit subclasses
+- `ScalableBloomFilter` support for `bytes` keys (`add`, `contains`, `add_batch`, `contains_batch`)
+- Strict validation on 128-bit key operations — wrong key type, length, or dtype raises `ValueError`
+- Guard on `upsert()` for UUID-keyed indexes (`NotImplementedError`)
+
 ### Changed
 
+- Extract 6 key-handling hook methods on `ShardedIndex` (`_is_single_key`, `_bloom_key`,
+    `_bloom_keys`, `_normalize_batch_keys`, `_shard_batch_keys`, `_key_dtype`) for subclass
+    customization
+- Add `_register_view_shard` and `_search_view_shards` hooks to `ShardedIndex` for uuid-mode
+    compatibility (usearch `Indexes` class does not support `IndexBig`)
+- Add `_iter_shard_vectors` and `_get_shard_vector` hooks to `ShardedIndex` for uuid-mode
+    compatibility (usearch `IndexBig.vectors` property is broken for uuid keys)
+- Make `_merge_batch_matches` and `_apply_radius_filter` dtype-safe using `np.zeros_like` + mask-copy
+    instead of `np.where(..., 0)` (V16 arrays do not support scalar 0 fill)
+- Rewrite `ShardedIndexedKeys.__array__` to shard-aware concatenation preserving correct dtype
 - Use `serialized_length` instead of `stats.allocated_bytes` for shard rotation threshold check
     (exactly matches on-disk file size and is faster)
 - Amortize rotation size check to avoid O(n) `serialized_length` call on every `add()`
 
 ### Fixed
 
+- Fix `size` property using wrong shard list — now sums `_viewed_indexes` which is always maintained
 - Enable `serialized_length` property test (fixed upstream in usearch-iscc fork)
 
 ## [0.1.0] - 2026-02-06

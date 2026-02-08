@@ -94,8 +94,28 @@ there.
 | `fpr`              | 0.01       | Lower = fewer false positives, more memory per element   |
 | `growth_factor`    | 2.0        | Higher = fewer filters, larger memory jumps              |
 
+## Bytes key support
+
+`ScalableBloomFilter` accepts both `int` and `bytes` keys. This is used internally by the 128-bit
+sharded indexes (`ShardedIndex128`, `ShardedNphdIndex128`) for bloom filter lookups with
+`bytes(16)` UUID keys:
+
+```python
+bloom = ScalableBloomFilter()
+
+# bytes keys work the same as int keys
+bloom.add(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f")
+print(bloom.contains(b"\x00\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f"))  # True
+
+# Batch operations with bytes keys
+keys = [b"\x00" * 16, b"\xff" * 16]
+bloom.add_batch(keys)
+print(bloom.contains_batch(keys))  # [True, True]
+```
+
 ## Integration with sharded indexes
 
-`ShardedIndex` and `ShardedNphdIndex` use `ScalableBloomFilter` internally (enabled by default via
-`bloom_filter=True`) for O(1) rejection of non-existent keys in `get()`, `contains()`, and
-`count()`. There is no need to manage the filter manually when using sharded indexes.
+All sharded indexes (`ShardedIndex`, `ShardedNphdIndex`, and their 128-bit variants) use
+`ScalableBloomFilter` internally (enabled by default via `bloom_filter=True`) for O(1) rejection of
+non-existent keys in `get()`, `contains()`, and `count()`. There is no need to manage the filter
+manually when using sharded indexes.
