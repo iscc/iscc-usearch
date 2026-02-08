@@ -13,13 +13,14 @@ icon: lucide/house
 
 ## Introduction
 
-`iscc-usearch` extends [USearch](https://github.com/unum-cloud/usearch) with two independent
-capabilities:
+`iscc-usearch` extends [USearch](https://github.com/unum-cloud/usearch) - a
+[high-performance](https://github.com/unum-cloud/usearch#performance) HNSW library adopted by
+ClickHouse, LangChain, and others - with two independent capabilities:
 
 **Sharded HNSW indexes** (`ShardedIndex`) keep a single active shard in RAM for writes while
 completed shards are memory-mapped for reads. Works with any vector type and metric USearch
-supports. Insert throughput stays consistent and memory stays bounded as the index grows to
-hundreds of millions of vectors.
+supports, including user-defined distance functions. Insert throughput stays consistent and memory
+stays bounded as the index grows to billions of vectors.
 
 **Normalized Prefix Hamming Distance** (`NphdIndex`, `ShardedNphdIndex`) compares binary vectors
 of mixed bit-lengths - a 64-bit query finds nearest neighbors among 256-bit vectors with
@@ -29,10 +30,12 @@ perceptual hashes, and locality-sensitive hashing.
 
 **Key features:**
 
-- **Bounded memory** - only one shard in RAM at a time
-- **Incremental writes** - no full rebuild needed
+- **Bounded memory** - only one shard in RAM at a time, the rest memory-mapped
+- **Billions of vectors** - sharded indexes scale well beyond single-machine RAM
+- **Incremental writes** - append vectors without rebuilding the index
 - **Mixed bit-lengths** - 64-bit and 256-bit vectors coexist in the same index
-- **Standard USearch API** - drop-in for existing USearch users
+- **Any distance metric** - user-defined metrics via USearch's plugin system
+- **Fast** - inherits USearch's HNSW engine, benchmarked at 10x the throughput of FAISS
 
 ## Which index class?
 
