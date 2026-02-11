@@ -1,0 +1,94 @@
+/* ISCC Copilot Widget Theme for Documentation Sites
+ *
+ * Styles the Chainlit copilot chat widget to match the ISCC brand.
+ * Injected into the widget Shadow DOM via customCssUrl.
+ *
+ * Zensical sets html { font-size: 125% } (20px) which inflates all rem-based
+ * sizes inside the Chainlit widget. We apply zoom: 0.8 only to the chat panel
+ * content and the floating button (not the shadow root, which would displace
+ * fixed-position elements).
+ */
+
+/* Scale chat panel content to compensate for 125% html font-size.
+ * The popper wrapper has position:fixed + transform for placement,
+ * so we zoom its child (the dialog) to avoid displacing the panel. */
+[data-radix-popper-content-wrapper] > [role="dialog"] {
+  zoom: 0.8;
+}
+
+/* Scale the floating button itself (icon + padding) */
+#cl-shadow-root > button {
+  zoom: 0.8;
+}
+
+/* Force light theme variables - ISCC brand on white background.
+ * Target both .light and .dark to override regardless of server theme. */
+:root,
+:host,
+.light,
+.dark {
+  --background: 0 0% 100% !important;
+  --foreground: 213 69% 23% !important;
+  --primary: 356 89% 67% !important;
+  --primary-foreground: 0 0% 100% !important;
+  --secondary: 210 30% 95% !important;
+  --secondary-foreground: 213 69% 23% !important;
+  --accent: 210 30% 95% !important;
+  --accent-foreground: 213 69% 23% !important;
+  --muted: 210 20% 96% !important;
+  --muted-foreground: 213 40% 40% !important;
+  --card: 0 0% 100% !important;
+  --card-foreground: 213 69% 23% !important;
+  --popover: 0 0% 100% !important;
+  --popover-foreground: 213 69% 23% !important;
+  --border: 210 20% 85% !important;
+  --input: 0 0% 100% !important;
+  --ring: 211 100% 35% !important;
+}
+
+/* Floating toggle button - ISCC Coral */
+button.bg-primary.rounded-full,
+button[class*="bg-primary"][class*="rounded-full"] {
+  background-color: #f56169 !important;
+  background: #f56169 !important;
+}
+
+button.bg-primary.rounded-full:hover,
+button[class*="bg-primary"][class*="rounded-full"]:hover {
+  background-color: #e04550 !important;
+  background: #e04550 !important;
+}
+
+/* Send button and primary actions - ISCC Blue */
+button.bg-primary:not(.rounded-full),
+button[class*="bg-primary"]:not([class*="rounded-full"]),
+.bg-primary:not(.rounded-full) {
+  background-color: #0054b2 !important;
+  background: #0054b2 !important;
+}
+
+button.bg-primary:not(.rounded-full):hover,
+button[class*="bg-primary"]:not([class*="rounded-full"]):hover,
+.bg-primary:not(.rounded-full):hover {
+  background-color: #123663 !important;
+  background: #123663 !important;
+}
+
+/* Links - ISCC Blue */
+a {
+  color: #0054b2 !important;
+}
+
+/* Code blocks - ISCC navy */
+pre,
+pre code,
+.hljs {
+  background-color: #0d2847 !important;
+  color: #e6edf5 !important;
+}
+
+/* Inline code */
+code:not(pre code):not(.hljs) {
+  background-color: #e8ebef !important;
+  color: inherit !important;
+}
