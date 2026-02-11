@@ -11,13 +11,13 @@ window.addEventListener("load", async function () {
   var tokenUrl = server + "/api/copilot-token";
 
   try {
-    var response = await fetch(tokenUrl, { credentials: "include" });
+    var response = await fetch(tokenUrl);
     var data = await response.json();
     window.mountChainlitWidget({
       chainlitServer: server,
       theme: "light",
       accessToken: data.accessToken,
-      customCssUrl: window.location.origin + "/stylesheets/copilot.css?v=3",
+      customCssUrl: window.location.origin + "/stylesheets/copilot.css?v=4",
     });
   } catch (e) {
     console.warn("ISCC-AI copilot: failed to fetch token", e);

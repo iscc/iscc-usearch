@@ -4,20 +4,12 @@
  * Injected into the widget Shadow DOM via customCssUrl.
  *
  * Zensical sets html { font-size: 125% } (20px) which inflates all rem-based
- * sizes inside the Chainlit widget. We apply zoom: 0.8 only to the chat panel
- * content and the floating button (not the shadow root, which would displace
- * fixed-position elements).
+ * sizes inside the Chainlit widget. We compensate by zooming #cl-shadow-root
+ * to 0.8 (inverse of 1.25), scaling all content back to the expected 16px base.
  */
 
-/* Scale chat panel content to compensate for 125% html font-size.
- * The popper wrapper has position:fixed + transform for placement,
- * so we zoom its child (the dialog) to avoid displacing the panel. */
-[data-radix-popper-content-wrapper] > [role="dialog"] {
-  zoom: 0.8;
-}
-
-/* Scale the floating button itself (icon + padding) */
-#cl-shadow-root > button {
+/* Compensate for Zensical 125% root font-size (1.25 * 0.8 = 1.0) */
+#cl-shadow-root {
   zoom: 0.8;
 }
 
