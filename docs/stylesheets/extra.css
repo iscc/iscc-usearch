@@ -49,8 +49,83 @@
   filter: invert(1);
 }
 
-/* Mermaid: let the default theme handle light/dark mode.
- * Only override edge color for softer appearance. */
+/* ---------- Light mode: ISCC Blue header ---------- */
+[data-md-color-scheme="default"] .md-header {
+  background-color: #0054b2;
+  color: #ffffff;
+}
+
+[data-md-color-scheme="default"] .md-header .md-header__button,
+[data-md-color-scheme="default"] .md-header .md-header__topic,
+[data-md-color-scheme="default"] .md-header .md-header__title {
+  color: #ffffff;
+}
+
+[data-md-color-scheme="default"] .md-header .md-search__input::placeholder {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Search button: white text/icon on blue header */
+[data-md-color-scheme="default"] .md-header .md-search__button {
+  color: rgba(255, 255, 255, 0.8);
+  background-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Search icon (mask uses background-color as fill) */
+[data-md-color-scheme="default"] .md-header .md-search__button::before {
+  background-color: rgba(255, 255, 255, 0.8);
+}
+
+/* Ctrl+K shortcut badge */
+[data-md-color-scheme="default"] .md-header .md-search__button::after {
+  background-color: #123663;
+  border-color: rgba(255, 255, 255, 0.3);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Invert logo in light mode header so it appears white on blue */
+[data-md-color-scheme="default"] .md-header__button.md-logo img {
+  filter: invert(1);
+}
+
+/* ---------- Dark mode: Deep Navy header ---------- */
+[data-md-color-scheme="slate"] .md-header {
+  background-color: #123663;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-md-color-scheme="slate"] .md-header .md-header__button,
+[data-md-color-scheme="slate"] .md-header .md-header__topic,
+[data-md-color-scheme="slate"] .md-header .md-header__title {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* ---------- Footer: Deep Navy ---------- */
+[data-md-color-scheme="default"] .md-footer {
+  background-color: #123663;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-md-color-scheme="default"] .md-footer a {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+[data-md-color-scheme="default"] .md-footer-meta {
+  background-color: rgba(0, 0, 0, 0.15);
+}
+
+[data-md-color-scheme="default"] .md-copyright,
+[data-md-color-scheme="default"] .md-copyright__highlight {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Match theme specificity: html .md-footer-meta.md-typeset a */
+html [data-md-color-scheme="default"] .md-footer-meta.md-typeset a {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Mermaid: softer edge color in dark mode */
 [data-md-color-scheme="slate"] .mermaid {
   --md-mermaid-edge-color: #6e7681;
 }
