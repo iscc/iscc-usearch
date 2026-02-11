@@ -4,20 +4,44 @@
  * Injected into the widget Shadow DOM via customCssUrl.
  *
  * Zensical sets html { font-size: 125% } (20px) which inflates all rem-based
- * sizes inside the Chainlit widget. We apply zoom: 0.8 to individual elements
- * (button, dialog content) rather than the shadow root, because zoom on the
- * root creates a containing block that displaces fixed-position children.
+ * sizes inside the Chainlit widget by 25%. Instead of blanket zoom (which
+ * over-corrects body text), we pin Tailwind text utilities to their intended
+ * pixel values and zoom only the self-contained toggle button.
  */
 
-/* Compensate for Zensical 125% root font-size (1.25 * 0.8 = 1.0).
- * Zoom the toggle button and all Radix popover content (chat panel,
- * agent dropdown, etc.) individually to preserve fixed positioning. */
+/* Toggle button: self-contained element, zoom works cleanly here */
 #chainlit-copilot-button {
   zoom: 0.8;
 }
 
-[data-radix-popper-content-wrapper] > * {
-  zoom: 0.8;
+/* --- Fix Tailwind text utilities inflated by 125% root font-size ---
+ * Tailwind rem values resolve against html 20px instead of 16px.
+ * Pin each utility to its intended pixel size. */
+.text-xs  { font-size: 12px !important; line-height: 16px !important; }
+.text-sm  { font-size: 14px !important; line-height: 20px !important; }
+.text-base { font-size: 16px !important; line-height: 24px !important; }
+.text-lg  { font-size: 18px !important; line-height: 28px !important; }
+.text-xl  { font-size: 20px !important; line-height: 28px !important; }
+.text-2xl { font-size: 24px !important; line-height: 32px !important; }
+
+/* --- Widen the chat panel --- */
+.copilot-container-collapsed {
+  min-width: 420px !important;
+}
+
+/* Fix inflated rem-based spacing inside the chat panel.
+ * Scale factor: 0.8rem per intended 1rem (16/20 = 0.8). */
+[data-radix-popper-content-wrapper] {
+  font-size: 16px;
+}
+
+/* Ensure chat message body text renders at readable size */
+#chainlit-copilot-chat p,
+#chainlit-copilot-chat li,
+#chainlit-copilot-chat span:not([class]),
+#chainlit-copilot-chat div:not([class]) > span {
+  font-size: 15px !important;
+  line-height: 1.5 !important;
 }
 
 /* Force light theme variables - ISCC brand on white background.
