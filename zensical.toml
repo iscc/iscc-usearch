@@ -9,6 +9,8 @@ copyright = "Copyright &copy; 2025-2026 ISCC Foundation"
 extra_css = ["stylesheets/extra.css"]
 extra_javascript = [
     { path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", async = true },
+    "https://iscc.ai/copilot/index.js",
+    "javascripts/copilot.js",
 ]
 
 nav = [
