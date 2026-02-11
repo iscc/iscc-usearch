@@ -4,12 +4,19 @@
  * Injected into the widget Shadow DOM via customCssUrl.
  *
  * Zensical sets html { font-size: 125% } (20px) which inflates all rem-based
- * sizes inside the Chainlit widget. We compensate by zooming #cl-shadow-root
- * to 0.8 (inverse of 1.25), scaling all content back to the expected 16px base.
+ * sizes inside the Chainlit widget. We apply zoom: 0.8 to individual elements
+ * (button, dialog content) rather than the shadow root, because zoom on the
+ * root creates a containing block that displaces fixed-position children.
  */
 
-/* Compensate for Zensical 125% root font-size (1.25 * 0.8 = 1.0) */
-#cl-shadow-root {
+/* Compensate for Zensical 125% root font-size (1.25 * 0.8 = 1.0).
+ * Zoom the toggle button and all Radix popover content (chat panel,
+ * agent dropdown, etc.) individually to preserve fixed positioning. */
+#chainlit-copilot-button {
+  zoom: 0.8;
+}
+
+[data-radix-popper-content-wrapper] > * {
   zoom: 0.8;
 }
 

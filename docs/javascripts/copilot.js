@@ -17,7 +17,7 @@ window.addEventListener("load", async function () {
       chainlitServer: server,
       theme: "light",
       accessToken: data.accessToken,
-      customCssUrl: window.location.origin + "/stylesheets/copilot.css?v=4",
+      customCssUrl: window.location.origin + "/stylesheets/copilot.css?v=5",
     });
   } catch (e) {
     console.warn("ISCC-AI copilot: failed to fetch token", e);
