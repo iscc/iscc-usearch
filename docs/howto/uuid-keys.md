@@ -1,5 +1,6 @@
 ---
 icon: lucide/key-round
+description: Use ShardedIndex128 and ShardedNphdIndex128 for datasets with 128-bit identifiers such as UUIDs, MD5 hashes, or structured multi-part keys.
 ---
 
 # 128-bit UUID keys

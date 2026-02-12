@@ -1,5 +1,6 @@
 ---
 icon: lucide/rocket
+description: Install iscc-usearch, create your first NphdIndex, add binary vectors, search for nearest neighbors, and save the index to disk.
 ---
 
 # Getting started

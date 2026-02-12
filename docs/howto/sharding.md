@@ -1,5 +1,6 @@
 ---
 icon: lucide/layers
+description: Configure ShardedNphdIndex shard sizes for write-heavy, read-heavy, or balanced workloads. Tune shard rotation and cross-shard search performance.
 ---
 
 # Sharding

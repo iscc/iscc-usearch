@@ -1,5 +1,6 @@
 ---
 icon: lucide/network
+description: How sharded HNSW indexes solve insert throughput degradation. Covers active vs view shards, bloom filter integration, and search fan-out trade-offs.
 ---
 
 # Sharding design

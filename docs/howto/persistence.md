@@ -1,5 +1,6 @@
 ---
 icon: lucide/hard-drive
+description: Save, load, memory-map, and restore NphdIndex instances. Compare load, view, restore, and copy methods for different RAM and startup trade-offs.
 ---
 
 # Persistence

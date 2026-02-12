@@ -1,9 +1,10 @@
 ---
 title: NPHD Metric
 icon: lucide/sigma
+description: Mathematical definition, properties, and implementation of Normalized Prefix Hamming Distance for comparing binary vectors of different bit-lengths.
 ---
 
-# Normalized Prefix Hamming Distance (NPHD)
+# Normalized Prefix Hamming Distance
 
 ## The problem with standard Hamming distance
 

@@ -1,6 +1,7 @@
 ---
 title: Variable-Length
 icon: lucide/ruler
+description: Mix 64-bit, 128-bit, and 256-bit binary vectors in a single NphdIndex using Normalized Prefix Hamming Distance for prefix-compatible similarity search.
 ---
 
 # Variable-length vectors

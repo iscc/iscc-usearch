@@ -1,5 +1,6 @@
 ---
 icon: lucide/git-pull-request
+description: Developer setup with uv, testing with 100% coverage, linting, type checking, security scanning, and details on the patched USearch fork.
 ---
 
 # Contributing

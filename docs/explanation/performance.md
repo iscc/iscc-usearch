@@ -1,5 +1,6 @@
 ---
 icon: lucide/gauge
+description: Benchmarks and optimizations for iscc-usearch including patched USearch fork improvements, Numba JIT compilation, bloom filters, and shard tuning guidance.
 ---
 
 # Performance

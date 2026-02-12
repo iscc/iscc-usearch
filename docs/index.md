@@ -1,5 +1,6 @@
 ---
 icon: lucide/house
+description: Python library extending USearch with sharded HNSW indexes, Normalized Prefix Hamming Distance for variable-length binary vectors, and 128-bit UUID key support.
 ---
 
 # iscc-usearch

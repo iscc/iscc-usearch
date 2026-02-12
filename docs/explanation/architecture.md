@@ -1,5 +1,6 @@
 ---
 icon: lucide/blocks
+description: Core design of iscc-usearch including length-prefixed padding, custom metric restoration, Numba compilation, and the six-class index hierarchy.
 ---
 
 # Architecture

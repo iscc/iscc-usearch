@@ -1,5 +1,6 @@
 ---
 icon: lucide/book-open
+description: API reference for NphdIndex, ShardedNphdIndex, ShardedIndex, ShardedIndex128, ShardedNphdIndex128, ScalableBloomFilter, and utility functions.
 ---
 
 # API Reference

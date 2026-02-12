@@ -1,6 +1,7 @@
 ---
 title: Scaling Up
 icon: lucide/trending-up
+description: Use ShardedNphdIndex for datasets that exceed RAM with automatic shard rotation, cross-shard search, and bounded memory usage.
 ---
 
 # Scaling up with ShardedNphdIndex

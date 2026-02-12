@@ -1,5 +1,6 @@
 ---
 icon: lucide/filter
+description: Use ScalableBloomFilter for fast probabilistic key existence checks with constant false positive rates. Covers creation, batch operations, and persistence.
 ---
 
 # Bloom filters

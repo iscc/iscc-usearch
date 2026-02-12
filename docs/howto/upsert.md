@@ -1,5 +1,6 @@
 ---
 icon: lucide/replace
+description: Perform idempotent insert-or-update operations with upsert. Compare upsert vs add for single and batch operations on NphdIndex and ShardedNphdIndex.
 ---
 
 # Upsert
