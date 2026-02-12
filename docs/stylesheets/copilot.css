@@ -41,7 +41,7 @@
 #chainlit-copilot-chat span:not([class]),
 #chainlit-copilot-chat div:not([class]) > span {
   font-size: 15px !important;
-  line-height: 1.5 !important;
+  line-height: 1.2 !important;
 }
 
 /* Force light theme variables - ISCC brand on white background.
