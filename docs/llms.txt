@@ -1,0 +1,42 @@
+# iscc-usearch
+
+> Scalable approximate nearest neighbor search for variable-length binary bit-vectors using the Normalized Prefix Hamming Distance (NPHD) metric.
+
+iscc-usearch is a Python library that extends USearch with sharded HNSW indexes for larger-than-RAM
+datasets and the NPHD metric for prefix-compatible binary vector similarity search. Shorter codes
+are prefixes of longer codes, enabling mixed bit-length queries. Part of the ISCC (ISO 24138:2024)
+content identification ecosystem.
+
+Index classes: NphdIndex (variable-length, in-memory), ShardedIndex (any metric, disk-backed),
+ShardedNphdIndex (variable-length, disk-backed), and 128-bit UUID key variants of each.
+
+Install: `pip install iscc-usearch`
+
+- [Source code](https://github.com/iscc/iscc-usearch)
+- [PyPI](https://pypi.org/project/iscc-usearch/)
+- [Full documentation](https://usearch.iscc.codes/llms-full.txt)
+
+## Tutorials
+
+- [Getting Started](https://usearch.iscc.codes/tutorials/getting-started.md): Installation and first steps with NphdIndex
+- [Variable-Length Vectors](https://usearch.iscc.codes/tutorials/variable-length.md): Working with mixed bit-length binary vectors
+- [Scaling Up](https://usearch.iscc.codes/tutorials/scaling-up.md): Sharded indexes for larger-than-RAM datasets
+
+## How-to Guides
+
+- [Persistence](https://usearch.iscc.codes/howto/persistence.md): Save, load, and restore indexes to disk
+- [Sharding](https://usearch.iscc.codes/howto/sharding.md): Shard indexes across multiple files
+- [UUID Keys](https://usearch.iscc.codes/howto/uuid-keys.md): Use 128-bit UUID keys instead of uint64
+- [Upsert](https://usearch.iscc.codes/howto/upsert.md): Update and insert vectors
+- [Bloom Filters](https://usearch.iscc.codes/howto/bloom-filters.md): Use bloom filters for deduplication
+
+## Explanation
+
+- [NPHD Metric](https://usearch.iscc.codes/explanation/nphd-metric.md): The Normalized Prefix Hamming Distance metric
+- [Architecture](https://usearch.iscc.codes/explanation/architecture.md): Index architecture and class hierarchy
+- [Sharding Design](https://usearch.iscc.codes/explanation/sharding-design.md): Sharding design decisions and trade-offs
+- [Performance](https://usearch.iscc.codes/explanation/performance.md): Performance characteristics and benchmarks
+
+## API Reference
+
+- [API](https://usearch.iscc.codes/reference/api.md): Complete Python API reference for all public classes

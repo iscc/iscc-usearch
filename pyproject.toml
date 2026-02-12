@@ -107,4 +107,7 @@ possibly-missing-attribute = "warn"
 
 [tool.poe.tasks]
 docs-serve = "zensical serve"
-docs-build = "zensical build"
+docs-build.sequence = [
+    { cmd = "zensical build" },
+    { cmd = "python scripts/gen_llms_full.py" },
+]
