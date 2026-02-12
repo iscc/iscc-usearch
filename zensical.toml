@@ -11,6 +11,7 @@ extra_javascript = [
     { path = "https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js", async = true },
     "https://iscc.ai/copilot/index.js",
     "javascripts/copilot.js",
+    "javascripts/copypage.js",
 ]
 
 nav = [
@@ -43,10 +44,10 @@ nav = [
 
 [project.theme]
 language = "en"
+custom_dir = "overrides"
 logo = "assets/logo_light.png"
 favicon = "assets/favicon.png"
 features = [
-    "content.action.edit",
     "content.code.annotate",
     "content.code.copy",
     "content.tooltips",
