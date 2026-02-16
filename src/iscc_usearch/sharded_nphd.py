@@ -330,7 +330,7 @@ class ShardedNphdIndex(ShardedIndex):
             result = super().get(keys, dtype=dtype)
             if result is None:
                 return None
-            return unpad_vectors(result.reshape(1, -1))[0]
+            return unpad_vectors(np.asarray(result).reshape(1, -1))[0]
 
         # Multiple keys case - parent returns list with None for missing keys
         results = super().get(keys, dtype=dtype)

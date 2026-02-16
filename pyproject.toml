@@ -1,6 +1,6 @@
 [project]
 name = "iscc-usearch"
-version = "0.2.0"
+version = "0.2.1"
 description = "Scalable approximate nearest neighbor search for variable-length binary bit-vectors using NPHD metric."
 readme = "README.md"
 license = "Apache-2.0"

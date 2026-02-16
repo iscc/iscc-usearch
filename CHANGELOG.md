@@ -7,10 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-02-16
+
 ### Changed
 
 - Shard and bloom filter saves use atomic write (temp file + rename) to prevent corruption
     from interrupted writes
+
+### Fixed
+
+- Fix type error in `ShardedNphdIndex.get()` causing CI type check failure
 
 ## [0.2.0] - 2026-02-08
 
@@ -69,3 +75,4 @@ Initial release of iscc-usearch.
 
 [0.1.0]: https://github.com/iscc/iscc-usearch/releases/tag/0.1.0
 [0.2.0]: https://github.com/iscc/iscc-usearch/compare/0.1.0...0.2.0
+[0.2.1]: https://github.com/iscc/iscc-usearch/compare/0.2.0...0.2.1
