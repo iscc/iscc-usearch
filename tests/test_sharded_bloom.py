@@ -481,6 +481,24 @@ def test_rebuild_bloom_skips_empty_shards(tmp_path: Path):
         assert idx._bloom.contains(i)
 
 
+def test_bloom_save_no_temp_residue(tmp_path: Path):
+    """Bloom save() produces valid file with no .tmp residue."""
+    idx = ShardedIndex(ndim=32, path=tmp_path)
+    vectors = np.random.rand(100, 32).astype(np.float32)
+    idx.add(list(range(100)), vectors)
+    idx.save()
+
+    bloom_path = tmp_path / "bloom.isbf"
+    assert bloom_path.exists()
+    assert not (tmp_path / "bloom.isbf.tmp").exists()
+
+    # Verify roundtrip
+    from iscc_usearch.bloom import ScalableBloomFilter
+
+    loaded = ScalableBloomFilter.load(bloom_path)
+    assert loaded.count == 100
+
+
 def test_bloom_stays_consistent_when_toggled(tmp_path: Path):
     """Test bloom filter stays in sync when bloom_filter setting is toggled.
 

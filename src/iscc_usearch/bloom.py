@@ -11,6 +11,8 @@ from typing import Sequence
 
 from fastbloom_rs import BloomFilter
 
+from iscc_usearch.utils import atomic_write
+
 __all__ = ["ScalableBloomFilter"]
 
 # File format magic bytes for validation
@@ -185,7 +187,16 @@ class ScalableBloomFilter:
         self._add_filter()
 
     def save(self, path: str | Path) -> None:
-        """Save bloom filter to disk.
+        """Save bloom filter to disk atomically via temp file + rename.
+
+        :param path: File path to save to
+        """
+        path = Path(path)
+        with atomic_write(path) as tmp:
+            self._write_to_file(tmp)
+
+    def _write_to_file(self, path: Path) -> None:
+        """Write bloom filter data to a file.
 
         File format:
         - 4 bytes: magic ("ISBF")
@@ -201,7 +212,7 @@ class ScalableBloomFilter:
           - 4 bytes: data_len (uint32)
           - data_len bytes: filter data
 
-        :param path: File path to save to
+        :param path: File path to write to
         """
         path = Path(path)
         with open(path, "wb") as f:

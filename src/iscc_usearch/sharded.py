@@ -24,7 +24,7 @@ from usearch.index import (
 )
 
 from iscc_usearch.bloom import ScalableBloomFilter
-from iscc_usearch.utils import timer
+from iscc_usearch.utils import atomic_write, timer
 
 __all__ = ["ShardedIndex", "ShardedIndex128", "ShardedIndexedKeys", "ShardedIndexedVectors"]
 
@@ -743,7 +743,8 @@ class ShardedIndex:
 
         shard_path = self._get_active_shard_path()
         with timer(f"ShardedIndex save {shard_path.name}"):
-            self._active_shard.save(shard_path, progress=progress)
+            with atomic_write(shard_path) as tmp:
+                self._active_shard.save(str(tmp), progress=progress)
         self._active_shard_path = shard_path
         # Invalidate cache since new shard file may have been created
         self._invalidate_shard_cache()
@@ -808,7 +809,16 @@ class ShardedIndex:
         """Load existing shards from directory.
 
         Finished shards are memory-mapped (read-only), last shard is loaded for writes.
+        Cleans up stale .tmp files left by interrupted saves.
         """
+        from loguru import logger
+
+        # Clean up stale temp files from interrupted saves
+        for pattern in ("*.usearch.tmp", "*.isbf.tmp"):
+            for stale in self._path.glob(pattern):
+                logger.warning(f"Removing stale temp file: {stale.name}")
+                stale.unlink()
+
         self._invalidate_shard_cache()
         shard_files = self._discover_shards()
 
@@ -1211,7 +1221,8 @@ class ShardedIndex:
 
         # Save current active shard
         with timer(f"ShardedIndex rotate save {shard_path.name}"):
-            self._active_shard.save(str(shard_path))
+            with atomic_write(shard_path) as tmp:
+                self._active_shard.save(str(tmp))
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
         # Invalidate cache since new shard file was created

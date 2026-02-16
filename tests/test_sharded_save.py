@@ -49,3 +49,47 @@ def test_save_no_duplicate_shards(tmp_path):
 
     # Should still be 1 shard, not 2
     assert index2.shard_count == 1
+
+
+def test_save_no_temp_files_after_save(tmp_path):
+    """After save(), no .tmp files should remain."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    vectors = np.random.rand(10, 64).astype(np.float32)
+    index.add(list(range(10)), vectors)
+    index.save()
+
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == [], f"Stale temp files found: {tmp_files}"
+
+
+def test_save_no_temp_files_after_rotation(tmp_path):
+    """After shard rotation, no .tmp files should remain."""
+    index = ShardedIndex(ndim=32, path=tmp_path, shard_size=500)
+
+    for i in range(100):
+        vector = np.random.rand(32).astype(np.float32)
+        index.add(i, vector)
+
+    assert index.shard_count >= 2
+    tmp_files = list(tmp_path.glob("*.tmp"))
+    assert tmp_files == [], f"Stale temp files found: {tmp_files}"
+
+
+def test_stale_tmp_cleanup_on_load(tmp_path):
+    """Stale .tmp files from interrupted saves are cleaned up on load."""
+    # Create a valid index
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    vectors = np.random.rand(10, 64).astype(np.float32)
+    index.add(list(range(10)), vectors)
+    index.save()
+
+    # Simulate stale temp files from a crash
+    (tmp_path / "shard_000.usearch.tmp").write_bytes(b"stale")
+    (tmp_path / "bloom.isbf.tmp").write_bytes(b"stale")
+
+    # Reopen index - should clean up stale files
+    index2 = ShardedIndex(ndim=64, path=tmp_path)
+
+    assert not (tmp_path / "shard_000.usearch.tmp").exists()
+    assert not (tmp_path / "bloom.isbf.tmp").exists()
+    assert len(index2) == 10

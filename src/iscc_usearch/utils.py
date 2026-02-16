@@ -1,10 +1,37 @@
 """Utility functions for iscc-usearch."""
 
+import os
 import time
+from contextlib import contextmanager
+from pathlib import Path
+
 from loguru import logger
 
 
-__all__ = ["timer"]
+__all__ = ["atomic_write", "timer"]
+
+
+@contextmanager
+def atomic_write(target):
+    """Context manager for atomic file writes via temp file + rename.
+
+    Writes to a temporary sibling file, then atomically replaces the target
+    via os.replace(). Prevents corrupt partial writes from process crashes.
+
+    Does not call fsync — provides process-crash safety, not power-loss durability.
+    Assumes single-writer (no concurrent saves to the same target).
+
+    :param target: Final destination path (str or Path)
+    """
+    target = Path(target)
+    tmp = target.parent / (target.name + ".tmp")
+    try:
+        yield tmp
+        if tmp.exists():
+            os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
 
 
 class timer:
