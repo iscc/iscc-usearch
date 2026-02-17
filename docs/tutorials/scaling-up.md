@@ -127,6 +127,25 @@ my_index/
 
 Completed shards are immutable. Only the highest-numbered shard is the active shard.
 
+## Open for read-only access
+
+Once you have a populated index, you can open it in read-only mode. All shards are memory-mapped
+and write operations are blocked:
+
+```python
+reader = ShardedNphdIndex(path="./my_index", read_only=True)
+
+# Search and retrieval work normally
+matches = reader.search(query, count=5)
+vec = reader.get(0)
+
+# Writes raise RuntimeError
+# reader.add(999, vec)  # RuntimeError: index is read-only
+```
+
+This is useful for serving search queries from a pre-built index without risk of accidental
+modification.
+
 ## Next steps
 
 - **[128-bit UUID keys](../howto/uuid-keys.md)** -- Use `ShardedNphdIndex128` when 64-bit keys are

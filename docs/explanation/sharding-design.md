@@ -98,8 +98,12 @@ on your read/write ratio -- see [Performance](performance.md) for benchmark data
 
 - No `remove()`: view shards are read-only and USearch does not support efficient single-key
     deletion from memory-mapped files.
-- No `clear()` / `reset()`: would require coordinating across multiple shard files.
-- No `copy()`: would require deep-copying multiple memory-mapped files.
+- No `clear()` / `copy()`: would require coordinating across or deep-copying multiple shard files.
 
-This keeps the implementation simple and predictable. If you need updates, use `NphdIndex` with
-`upsert()` (single-file only).
+`reset()` releases all in-memory resources (view shards, active shard, bloom filter) without
+deleting files on disk. After reset, the index is empty and ready for new `add()` calls.
+
+`add_once()` provides skip-if-exists semantics — it adds a vector only when its key does not
+already exist. This enables idempotent batch loads without requiring `remove()`.
+
+For full insert-or-update semantics, use `NphdIndex` with `upsert()` (single-file only).

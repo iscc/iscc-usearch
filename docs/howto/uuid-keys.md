@@ -72,16 +72,38 @@ key = b"\x00" * 16
 vector = np.random.randint(0, 256, size=32, dtype=np.uint8)
 index.add(key, vector)
 
-# Batch add
+# Batch add — V16 array
 keys = np.array([b"\x00" * 15 + bytes([i]) for i in range(100)], dtype="V16")
 vectors = np.random.randint(0, 256, size=(100, 32), dtype=np.uint8)
 index.add(keys, vectors)
+
+# Batch add — list of bytes (also accepted)
+keys_list = [b"\x00" * 15 + bytes([i]) for i in range(100, 200)]
+vectors2 = np.random.randint(0, 256, size=(100, 32), dtype=np.uint8)
+index.add(keys_list, vectors2)
 ```
 
 !!! note
 
     Auto-key generation (`keys=None`) is not supported for 128-bit indexes. All keys must be
     provided explicitly.
+
+## Skip-if-exists with add_once()
+
+`add_once()` adds vectors only when their keys do not already exist. Existing keys are silently
+skipped (first-write-wins). Works with single keys, V16 arrays, and `list[bytes]`:
+
+```python
+key = b"\x00" * 16
+vec = np.random.randint(0, 256, size=32, dtype=np.uint8)
+
+# First add succeeds
+index.add_once(key, vec)
+
+# Second add is silently skipped
+result = index.add_once(key, vec)
+assert result is None  # key already existed
+```
 
 ## Search
 
@@ -146,12 +168,13 @@ index = ShardedNphdIndex128(path="./my_nphd_128")
 
 128-bit indexes enforce strict key validation:
 
-| Operation                                      | Validation                                        |
-| ---------------------------------------------- | ------------------------------------------------- |
-| `add(key, vec)`                                | `key` must be `bytes` of length 16                |
-| `add(keys, vecs)`                              | `keys` must be `np.ndarray` with `dtype='V16'`    |
-| `get(key)` / `contains(key)` / `count(key)`    | `key` must be `bytes` of length 16                |
-| `get(keys)` / `contains(keys)` / `count(keys)` | `keys` must be V16 array or `Sequence[bytes(16)]` |
+| Operation                                      | Validation                                                        |
+| ---------------------------------------------- | ----------------------------------------------------------------- |
+| `add(key, vec)`                                | `key` must be `bytes` of length 16                                |
+| `add(keys, vecs)`                              | `keys`: `np.ndarray` with `dtype='V16'` or `list[bytes]` (len 16) |
+| `add_once(key, vec)` / `add_once(keys, vecs)`  | Same rules as `add()`                                             |
+| `get(key)` / `contains(key)` / `count(key)`    | `key` must be `bytes` of length 16                                |
+| `get(keys)` / `contains(keys)` / `count(keys)` | `keys` must be V16 array or `Sequence[bytes(16)]`                 |
 
 Passing the wrong key type or length raises `ValueError` immediately rather than producing
 silent incorrect results.
@@ -161,4 +184,4 @@ silent incorrect results.
 - **No auto-keys**: `keys=None` raises `ValueError`. All keys must be explicit.
 - **Append-only**: Same as standard sharded indexes — no `remove()`, `copy()`, or `clear()`.
     `upsert()` is available on the single-file `Index` (including uuid keys) but not on sharded
-    indexes.
+    indexes. Use `add_once()` for skip-if-exists semantics on sharded indexes.

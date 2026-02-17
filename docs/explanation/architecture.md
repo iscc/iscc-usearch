@@ -78,13 +78,13 @@ classes stay clean.
 
 ### Choosing an index class
 
-| Class                 | Var-len | Keys    | Shards | Upsert | Use case                              |
-| --------------------- | :-----: | ------- | :----: | :----: | ------------------------------------- |
-| `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    | ISCC codes, fits in RAM               |
-| `ShardedIndex`        |    —    | uint64  |   ✓    |   —    | Fixed-length vectors, large scale     |
-| `ShardedIndex128`     |    —    | 128-bit |   ✓    |   —    | Fixed-length vectors, 128-bit keys    |
-| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   —    | ISCC codes, large scale (production)  |
-| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   —    | ISCC codes, large scale, 128-bit keys |
+| Class                 | Var-len | Keys    | Shards | Upsert | Add-once | Use case                              |
+| --------------------- | :-----: | ------- | :----: | :----: | :------: | ------------------------------------- |
+| `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    |    —     | ISCC codes, fits in RAM               |
+| `ShardedIndex`        |    —    | uint64  |   ✓    |   —    |    ✓     | Fixed-length vectors, large scale     |
+| `ShardedIndex128`     |    —    | 128-bit |   ✓    |   —    |    ✓     | Fixed-length vectors, 128-bit keys    |
+| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   —    |    ✓     | ISCC codes, large scale (production)  |
+| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   —    |    ✓     | ISCC codes, large scale, 128-bit keys |
 
 !!! note "About `Index`"
 

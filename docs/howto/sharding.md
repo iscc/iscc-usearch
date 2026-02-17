@@ -79,6 +79,82 @@ index.save()
 index = ShardedNphdIndex(path="./my_shards")
 ```
 
+## Read-only mode
+
+Open an existing index for read-only access with `read_only=True`. All shards are memory-mapped
+(no active shard in RAM), and write operations raise `RuntimeError`:
+
+```python
+index = ShardedNphdIndex(path="./my_shards", read_only=True)
+
+# Search and retrieve work normally
+matches = index.search(query, count=10)
+vec = index.get(42)
+
+# Writes are blocked
+index.add(99, vec)  # RuntimeError: index is read-only
+```
+
+Read-only mode requires existing shards on disk — passing `read_only=True` to an empty path raises
+`ValueError`.
+
+Use read-only mode when:
+
+- Serving search queries from a pre-built index without risk of accidental writes.
+- Running multiple read-only instances against the same shard directory (each process opens its own
+    memory-mapped views).
+
+## Skip-if-exists with add_once()
+
+`add_once()` adds vectors only when their keys do not already exist. Existing keys are silently
+skipped (first-write-wins):
+
+```python
+import numpy as np
+
+vec_a = np.random.randint(0, 256, size=32, dtype=np.uint8)
+vec_b = np.random.randint(0, 256, size=32, dtype=np.uint8)
+
+# First add succeeds
+index.add_once(1, vec_a)
+
+# Second add is silently skipped — vec_a is kept
+index.add_once(1, vec_b)
+assert np.array_equal(index.get(1), vec_a)
+```
+
+Batch `add_once()` deduplicates within the batch (first occurrence wins) and skips keys already
+in the index:
+
+```python
+keys = [10, 11, 10]  # duplicate key 10
+vecs = np.random.randint(0, 256, size=(3, 32), dtype=np.uint8)
+index.add_once(keys, vecs)  # Adds keys 10 and 11 (second key=10 skipped)
+```
+
+!!! note
+
+    `add_once()` requires explicit keys — `keys=None` raises `ValueError`.
+
+## Reset the index
+
+`reset()` releases all resources (view shards, active shard, bloom filter) without deleting files
+on disk. After reset, the index is empty and ready for new `add()` calls:
+
+```python
+print(index.size)  # e.g. 1000
+index.reset()
+print(index.size)  # 0
+
+# Add fresh data with the same configuration
+index.add(1, vec_a)
+```
+
+!!! note
+
+    `reset()` does not delete shard files. Call it when you want to release memory and start
+    fresh in-process without removing the persisted data.
+
 ## Choosing `shard_size`
 
 | Workload    | Recommended shard size | Rationale                              |
@@ -121,10 +197,10 @@ arrays (batch) instead of integers. See the [UUID keys how-to](uuid-keys.md) for
 `ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. The following operations
 raise `NotImplementedError`:
 
-- `remove()` -- vectors cannot be deleted.
-- `copy()` / `clear()` / `reset()` -- would require handling multiple files.
-- `join()` / `cluster()` / `pairwise_distance()` -- not applicable to sharded storage.
-- `upsert()` -- not supported (append-only design requires `remove()`).
+- `remove()` — vectors cannot be deleted.
+- `copy()` / `clear()` — would require handling multiple files.
+- `join()` / `cluster()` / `pairwise_distance()` — not applicable to sharded storage.
+- `upsert()` — not supported (append-only design requires `remove()`).
 
 !!! warning "Single-process only"
 
