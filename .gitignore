@@ -35,3 +35,4 @@ site/
 # Claude Code
 .claude/
 CLAUDE.local.md
+AGENTS.md

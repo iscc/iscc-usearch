@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `read_only` mode for all sharded index variants — opens all shards as memory-mapped views, blocking
+    write operations while allowing full read access
 - `add_once()` method for skip-if-exists semantics on all sharded index variants
 
 ### Fixed

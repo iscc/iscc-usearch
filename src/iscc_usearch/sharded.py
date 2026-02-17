@@ -266,6 +266,8 @@ class ShardedIndex:
     :param path: Directory path for shard storage (required)
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
     :param bloom_filter: Enable bloom filter for fast non-existent key rejection
+    :param read_only: Open all shards in view mode (memory-mapped, read-only). Raises
+        ValueError if no existing shards are found. Write operations raise IndexError.
     """
 
     def __init__(
@@ -281,11 +283,13 @@ class ShardedIndex:
         path: str | os.PathLike,
         shard_size: int = DEFAULT_SHARD_SIZE,
         bloom_filter: bool = True,
+        read_only: bool = False,
     ) -> None:
         """Initialize a sharded index."""
         self._path = Path(path)
         self._shard_size = shard_size
         self._use_bloom = bloom_filter
+        self._read_only = read_only
 
         # Initialize shard containers early (used by _discover_shards)
         self._view_shards: Indexes | None = None
@@ -300,8 +304,9 @@ class ShardedIndex:
         # Amortized rotation check: skip O(n) serialized_length on every add
         self._adds_until_size_check: int = 0
 
-        # Create directory if needed
-        self._path.mkdir(parents=True, exist_ok=True)
+        # Create directory if needed (skip for read-only to avoid side-effects)
+        if not self._read_only:
+            self._path.mkdir(parents=True, exist_ok=True)
 
         # Discover existing shards
         existing_shards = self._discover_shards()
@@ -323,6 +328,8 @@ class ShardedIndex:
         if existing_shards:
             # Load existing index
             self._load_existing()
+        elif self._read_only:
+            raise ValueError("read_only=True requires existing shards, but none were found")
         else:
             # Create first active shard and bloom filter for new index
             self._active_shard = self._create_shard()
@@ -384,6 +391,18 @@ class ShardedIndex:
             return self._view_shards.search(vectors, count=count, threads=threads, exact=exact, progress=progress)
         return None
 
+    # === Read-only support ===
+
+    @property
+    def read_only(self) -> bool:
+        """Whether the index is in read-only mode."""
+        return self._read_only
+
+    def _check_writable(self) -> None:
+        """Raise RuntimeError if the index is read-only."""
+        if self._read_only:
+            raise RuntimeError("index is read-only")
+
     # === Core Operations ===
 
     def add(
@@ -406,6 +425,7 @@ class ShardedIndex:
         :param progress: Progress callback
         :return: Key(s) for added vectors
         """
+        self._check_writable()
         if self._active_shard is None:
             self._active_shard = self._create_shard()
 
@@ -450,7 +470,9 @@ class ShardedIndex:
         :param kwargs: Additional arguments passed to add()
         :return: Key(s) added, empty array if all skipped, None if single key skipped
         :raises ValueError: If keys is None or keys/vectors length mismatch
+        :raises RuntimeError: If index is read-only
         """
+        self._check_writable()
         if keys is None:
             raise ValueError("add_once() requires explicit keys")
         if self._is_single_key(keys):
@@ -779,7 +801,9 @@ class ShardedIndex:
         :param path_or_buffer: Must be None. Raises TypeError if a path is provided.
         :param progress: Progress callback
         :raises TypeError: If path_or_buffer is not None.
+        :raises RuntimeError: If index is read-only.
         """
+        self._check_writable()
         if path_or_buffer is not None:
             raise TypeError(
                 "ShardedIndex.save() does not accept a path argument. "
@@ -813,7 +837,9 @@ class ShardedIndex:
         :param save: Whether to save the bloom filter to disk after rebuilding
         :param log_progress: Whether to log progress per shard
         :return: Number of keys added to the bloom filter
+        :raises RuntimeError: If index is read-only
         """
+        self._check_writable()
         from loguru import logger
 
         # Create fresh bloom filter
@@ -888,36 +914,50 @@ class ShardedIndex:
                 self._bloom = ScalableBloomFilter()
             return  # pragma: no cover - defensive path for corruption recovery
 
-        with timer(f"ShardedIndex load {len(shard_files)} shards from {self._path}", log_start=True):
-            # All but the last shard go into view mode
-            view_paths = shard_files[:-1]
-            active_path = shard_files[-1]
-
+        mode = "view" if self._read_only else "load"
+        with timer(f"ShardedIndex {mode} {len(shard_files)} shards from {self._path}", log_start=True):
             # Restore view shards individually (workaround for usearch bug #643:
             # Indexes(paths=[...]) segfaults). References kept to prevent GC.
             self._viewed_indexes = []
             self._view_shards = None
-            for p in view_paths:
-                viewed = self._restore_shard(p, view=True)
-                if viewed is None:  # pragma: no cover
-                    raise RuntimeError(f"Failed to restore shard: {p}")
-                self._register_view_shard(viewed)
 
-            # Load active shard (writable) and track its path for save()
-            active_shard = self._restore_shard(active_path, view=False)
-            if active_shard is None:  # pragma: no cover
-                raise RuntimeError(f"Failed to restore shard: {active_path}")
-            self._active_shard = active_shard
-            self._active_shard_path = active_path
+            if self._read_only:
+                # Read-only: view ALL shards (no active shard)
+                for p in shard_files:
+                    viewed = self._restore_shard(p, view=True)
+                    if viewed is None:  # pragma: no cover
+                        raise RuntimeError(f"Failed to restore shard: {p}")
+                    self._register_view_shard(viewed)
+                self._active_shard = None
+                self._active_shard_path = None
+                last_shard = self._viewed_indexes[-1]
+            else:
+                # All but the last shard go into view mode
+                view_paths = shard_files[:-1]
+                active_path = shard_files[-1]
 
-        # Update config from loaded shard to ensure new shards match existing ones
-        self._config["ndim"] = active_shard.ndim
-        self._config["dtype"] = active_shard.dtype
-        self._config["metric"] = active_shard.metric
-        self._config["connectivity"] = active_shard.connectivity
-        self._config["expansion_add"] = active_shard.expansion_add
-        self._config["expansion_search"] = active_shard.expansion_search
-        self._config["multi"] = active_shard.multi
+                for p in view_paths:
+                    viewed = self._restore_shard(p, view=True)
+                    if viewed is None:  # pragma: no cover
+                        raise RuntimeError(f"Failed to restore shard: {p}")
+                    self._register_view_shard(viewed)
+
+                # Load active shard (writable) and track its path for save()
+                active_shard = self._restore_shard(active_path, view=False)
+                if active_shard is None:  # pragma: no cover
+                    raise RuntimeError(f"Failed to restore shard: {active_path}")
+                self._active_shard = active_shard
+                self._active_shard_path = active_path
+                last_shard = active_shard
+
+        # Update config from last shard to ensure new shards match existing ones
+        self._config["ndim"] = last_shard.ndim
+        self._config["dtype"] = last_shard.dtype
+        self._config["metric"] = last_shard.metric
+        self._config["connectivity"] = last_shard.connectivity
+        self._config["expansion_add"] = last_shard.expansion_add
+        self._config["expansion_search"] = last_shard.expansion_search
+        self._config["multi"] = last_shard.multi
 
     @staticmethod
     def metadata(path: str | os.PathLike) -> dict | None:
@@ -1001,6 +1041,7 @@ class ShardedIndex:
     @expansion_add.setter
     def expansion_add(self, value: int) -> None:
         """Set expansion parameter for additions (active shard only)."""
+        self._check_writable()
         if self._active_shard is not None:
             self._active_shard.expansion_add = value
         self._config["expansion_add"] = value
@@ -1102,7 +1143,10 @@ class ShardedIndex:
         Releases view shards, active shard, and bloom filter memory. Does not
         delete files on disk. After reset, the index is empty and ready for
         new add() calls with the same configuration.
+
+        :raises RuntimeError: If index is read-only
         """
+        self._check_writable()
         # Release view shards (GC frees memory-mapped files)
         self._view_shards = None
         self._viewed_indexes.clear()
@@ -1450,7 +1494,10 @@ class ShardedIndex:
 
     def __repr__(self) -> str:
         """Return string representation of the sharded index."""
-        return f"ShardedIndex({self.size} vectors in {self.shard_count} shards, ndim={self.ndim}, path={self._path})"
+        ro = ", read_only" if self._read_only else ""
+        return (
+            f"ShardedIndex({self.size} vectors in {self.shard_count} shards, ndim={self.ndim}, path={self._path}{ro})"
+        )
 
 
 class _UuidKeyMixin:

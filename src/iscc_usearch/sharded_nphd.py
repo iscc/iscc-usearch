@@ -399,10 +399,13 @@ class ShardedNphdIndex(ShardedIndex):
     def _load_existing(self) -> None:
         """Load existing shards and sync max_dim from loaded shard."""
         super()._load_existing()
-        # Parent always creates active_shard if none exists
-        if self._active_shard is not None:  # pragma: no branch
+        if self._active_shard is not None:
             # Compute max_dim from shard's ndim (ndim = max_dim + 8 for length byte)
             self._max_dim = self._active_shard.ndim - 8
+            self._max_bytes = self._max_dim // 8
+        else:
+            # Read-only mode: derive max_dim from config (set by parent's _load_existing)
+            self._max_dim = self._config["ndim"] - 8
             self._max_bytes = self._max_dim // 8
 
     @property
@@ -425,7 +428,8 @@ class ShardedNphdIndex(ShardedIndex):
 
     def __repr__(self) -> str:
         """Return string representation of the sharded NPHD index."""
-        return f"ShardedNphdIndex({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path})"
+        ro = ", read_only" if self._read_only else ""
+        return f"ShardedNphdIndex({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path}{ro})"
 
 
 class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
@@ -482,4 +486,5 @@ class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
 
     def __repr__(self) -> str:
         """Return string representation of the sharded NPHD 128-bit index."""
-        return f"ShardedNphdIndex128({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path})"
+        ro = ", read_only" if self._read_only else ""
+        return f"ShardedNphdIndex128({self.size} vectors in {self.shard_count} shards, max_dim={self._max_dim}, path={self._path}{ro})"
