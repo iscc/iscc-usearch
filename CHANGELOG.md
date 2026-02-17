@@ -5,13 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-02-17
 
 ### Added
 
 - `read_only` mode for all sharded index variants — opens all shards as memory-mapped views, blocking
     write operations while allowing full read access
 - `add_once()` method for skip-if-exists semantics on all sharded index variants
+- `reset()` method for releasing resources without deleting files on disk
 
 ### Fixed
 
@@ -92,3 +93,4 @@ Initial release of iscc-usearch.
 [0.1.0]: https://github.com/iscc/iscc-usearch/releases/tag/0.1.0
 [0.2.0]: https://github.com/iscc/iscc-usearch/compare/0.1.0...0.2.0
 [0.2.1]: https://github.com/iscc/iscc-usearch/compare/0.2.0...0.2.1
+[0.3.0]: https://github.com/iscc/iscc-usearch/compare/0.2.1...0.3.0
