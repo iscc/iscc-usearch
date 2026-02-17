@@ -430,6 +430,50 @@ class ShardedIndex:
 
         return result
 
+    def add_once(
+        self,
+        keys: int | Any,
+        vectors: NDArray[Any],
+        **kwargs: Any,
+    ) -> int | NDArray | None:
+        """Add vectors, silently skipping keys that already exist.
+
+        First-write-wins: if a key is already in the index, its vector is kept
+        unchanged. Duplicate keys within a single batch are deduplicated — only the
+        first occurrence is added.
+
+        Not atomic under concurrent writes — caller must serialize if needed
+        (see ShardedIndex concurrency model).
+
+        :param keys: Integer key(s) — None not accepted
+        :param vectors: Vector or batch of vectors to add
+        :param kwargs: Additional arguments passed to add()
+        :return: Key(s) added, empty array if all skipped, None if single key skipped
+        :raises ValueError: If keys is None or keys/vectors length mismatch
+        """
+        if keys is None:
+            raise ValueError("add_once() requires explicit keys")
+        if self._is_single_key(keys):
+            if self.contains(keys):
+                return None
+            return self.add(keys, vectors, **kwargs)
+        # Batch path
+        keys_arr = self._normalize_batch_keys(keys)
+        vectors_arr = np.asarray(vectors)
+        if len(keys_arr) != len(vectors_arr):
+            raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_arr)})")
+        # Deduplicate within batch — keep first occurrence
+        _, first_indices = np.unique(keys_arr, return_index=True)
+        first_indices = np.sort(first_indices)
+        keys_arr = keys_arr[first_indices]
+        vectors_arr = vectors_arr[first_indices]
+        # Filter out keys already in index
+        exists = np.asarray(self.contains(keys_arr), dtype=bool)
+        new_mask = ~exists
+        if not new_mask.any():
+            return np.array([], dtype=self._key_dtype)
+        return self.add(keys_arr[new_mask], vectors_arr[new_mask], **kwargs)
+
     def search(
         self,
         vectors: NDArray[Any],
@@ -1460,6 +1504,26 @@ class _UuidKeyMixin:
         else:
             keys = self._normalize_batch_keys(keys)
         return super().add(keys, vectors, **kwargs)  # type: ignore[misc]
+
+    def add_once(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> Any:
+        """Add vectors with 128-bit keys, skipping keys that already exist.
+
+        :param keys: bytes(16) key, V16 ndarray batch, or iterable of bytes(16)
+        :param vectors: Vector or batch of vectors to add
+        :return: Key(s) added, empty array if all skipped, None if single key skipped
+        :raises ValueError: If keys is None, wrong type, or wrong length
+        """
+        if keys is None:
+            raise ValueError("Auto-key generation not supported for 128-bit keys")
+        if isinstance(keys, bytes):
+            if len(keys) != 16:
+                raise ValueError(f"UUID key must be exactly 16 bytes, got {len(keys)}")
+        elif isinstance(keys, np.ndarray):
+            if keys.dtype != UUID_DTYPE:
+                raise ValueError(f"Batch keys must have dtype 'V16', got {keys.dtype}")
+        else:
+            keys = self._normalize_batch_keys(keys)
+        return super().add_once(keys, vectors, **kwargs)  # type: ignore[misc]
 
     # --- Validation on read paths ---
 

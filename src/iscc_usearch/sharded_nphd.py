@@ -264,6 +264,63 @@ class ShardedNphdIndex(ShardedIndex):
         # Call parent add with padded vectors
         return super().add(keys, padded, copy=copy, threads=threads, log=log, progress=progress)
 
+    def add_once(
+        self,
+        keys: int | Any,
+        vectors: NDArray[Any],
+        **kwargs: Any,
+    ) -> int | NDArray | None:
+        """Add variable-length vectors, skipping keys that already exist.
+
+        First-write-wins: existing keys kept unchanged. Batch duplicates
+        deduplicated (first occurrence kept).
+
+        Not atomic under concurrent writes — caller must serialize if needed.
+
+        :param keys: Integer key(s) — None not accepted
+        :param vectors: Single vector or batch of variable-length vectors
+        :param kwargs: Additional arguments passed to add()
+        :return: Key(s) added, empty array if all skipped, None if single key skipped
+        :raises ValueError: If keys is None or keys/vectors length mismatch
+        """
+        if keys is None:
+            raise ValueError("add_once() requires explicit keys")
+        if self._is_single_key(keys):
+            if self.contains(keys):
+                return None
+            return self.add(keys, vectors, **kwargs)
+        # Batch path — vectors may be mixed-length, cannot use np.asarray
+        keys_arr = self._normalize_batch_keys(keys)
+        # Match add() normalization: treat 1D ndarray as a single vector
+        if hasattr(vectors, "ndim") and vectors.ndim == 1:
+            vectors = [vectors]
+        if isinstance(vectors, np.ndarray) and vectors.ndim == 2:
+            vectors_seq = vectors
+        else:
+            vectors_seq = list(vectors)
+        if len(keys_arr) != len(vectors_seq):
+            raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_seq)})")
+        # Deduplicate within batch — keep first occurrence
+        _, first_indices = np.unique(keys_arr, return_index=True)
+        first_indices = np.sort(first_indices)
+        keys_arr = keys_arr[first_indices]
+        if isinstance(vectors_seq, np.ndarray):
+            vectors_seq = vectors_seq[first_indices]
+        else:
+            vectors_seq = [vectors_seq[i] for i in first_indices]
+        # Filter out keys already in index
+        exists = np.asarray(self.contains(keys_arr), dtype=bool)
+        new_mask = ~exists
+        if not new_mask.any():
+            return np.array([], dtype=self._key_dtype)
+        new_keys = keys_arr[new_mask]
+        new_indices = np.where(new_mask)[0]
+        if isinstance(vectors_seq, np.ndarray):
+            new_vectors = vectors_seq[new_indices]
+        else:
+            new_vectors = [vectors_seq[i] for i in new_indices]
+        return self.add(new_keys, new_vectors, **kwargs)
+
     def search(
         self,
         vectors: NDArray[Any],

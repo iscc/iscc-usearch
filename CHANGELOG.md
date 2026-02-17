@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `add_once()` method for skip-if-exists semantics on all sharded index variants
+
 ### Fixed
 
 - `expansion_search` setter now propagates to view shards for consistent search quality
