@@ -104,6 +104,20 @@ def test_expansion_search_setter(tmp_path):
     assert index.expansion_search == 512
 
 
+def test_expansion_search_setter_propagates_to_view_shards(tmp_path):
+    """Test expansion_search setter propagates to view shards."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=50)
+    for i in range(50):
+        index.add(i, np.random.rand(64).astype(np.float32))
+
+    # Rotation should have created view shards
+    assert len(index._viewed_indexes) > 0
+
+    index.expansion_search = 999
+    for shard in index._viewed_indexes:
+        assert shard.expansion_search == 999
+
+
 def test_multi_property(tmp_path):
     """Test multi property."""
     index = ShardedIndex(ndim=64, multi=True, path=tmp_path)

@@ -961,9 +961,11 @@ class ShardedIndex:
 
     @expansion_search.setter
     def expansion_search(self, value: int) -> None:
-        """Set expansion parameter for searches (active shard only)."""
+        """Set expansion parameter for searches (all shards)."""
         if self._active_shard is not None:
             self._active_shard.expansion_search = value
+        for shard in self._viewed_indexes:
+            shard.expansion_search = value
         self._config["expansion_search"] = value
 
     @property
