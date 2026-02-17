@@ -165,3 +165,21 @@ def test_search_with_negative_count_raises_value_error(nphd_index_factory):
 
     with pytest.raises(ValueError, match=r"`count` must be >= 1"):
         idx.search(query, count=-5)
+
+
+def test_search_batch_mixed_length_vectors(nphd_index_factory):
+    """Batch search with mixed-length query vectors returns BatchMatches."""
+    idx = nphd_index_factory(max_dim=256)
+    idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
+    idx.add(2, np.array([100, 150, 200, 250, 10, 20], dtype=np.uint8))
+    idx.add(3, np.array([1, 2], dtype=np.uint8))
+
+    # Batch of queries with different lengths (ragged list)
+    queries = [
+        np.array([178, 204, 60, 240], dtype=np.uint8),
+        np.array([100, 150], dtype=np.uint8),
+        np.array([1, 2, 3, 4, 5, 6, 7, 8], dtype=np.uint8),
+    ]
+    result = idx.search(queries, count=2)
+
+    assert len(result) == 3

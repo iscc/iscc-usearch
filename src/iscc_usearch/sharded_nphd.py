@@ -288,15 +288,14 @@ class ShardedNphdIndex(ShardedIndex):
         :param progress: Progress callback
         :return: Matches for single query, BatchMatches for batch
         """
-        # Track if original input was single vector
-        vectors = np.asarray(vectors)
-        is_single = vectors.ndim == 1
+        # Detect single vector before padding (avoid np.asarray which fails on ragged lists)
+        is_single = hasattr(vectors, "ndim") and vectors.ndim == 1
 
         # Handle single vector - wrap in list for padding
         if is_single:
             vectors = [vectors]
 
-        # Pad vectors to uniform size
+        # Pad vectors to uniform size (handles variable-length vectors)
         padded = pad_vectors(vectors, self._max_bytes)
 
         # For single query, pass 1D array so parent returns Matches
