@@ -1444,7 +1444,7 @@ class _UuidKeyMixin:
     def add(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> Any:
         """Add vectors with strict 128-bit key validation.
 
-        :param keys: bytes(16) key or V16 ndarray batch
+        :param keys: bytes(16) key, V16 ndarray batch, or iterable of bytes(16)
         :param vectors: Vector or batch of vectors to add
         :return: Key(s) for added vectors
         :raises ValueError: If keys is None, wrong type, or wrong length
@@ -1458,7 +1458,7 @@ class _UuidKeyMixin:
             if keys.dtype != UUID_DTYPE:
                 raise ValueError(f"Batch keys must have dtype 'V16', got {keys.dtype}")
         else:
-            raise ValueError("UUID keys must be bytes(16) or np.ndarray with dtype 'V16'")
+            keys = self._normalize_batch_keys(keys)
         return super().add(keys, vectors, **kwargs)  # type: ignore[misc]
 
     # --- Validation on read paths ---

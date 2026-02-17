@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Batch `search()` with mixed-length vectors in `ShardedNphdIndex`
 - `save()` now raises `TypeError` if a path argument is passed to `ShardedIndex`
 
+### Changed
+
+- `ShardedIndex128.add()` accepts `list[bytes]` as batch keys
+
 ## [0.2.1] - 2026-02-16
 
 ### Changed

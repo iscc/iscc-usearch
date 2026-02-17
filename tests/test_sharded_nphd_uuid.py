@@ -279,7 +279,7 @@ def test_add_wrong_key_length_raises(tmp_path):
 def test_add_int_key_raises(tmp_path):
     """Int key raises ValueError on uuid index."""
     idx = ShardedNphdIndex128(max_dim=256, path=tmp_path / "idx")
-    with pytest.raises(ValueError, match="bytes.*V16"):
+    with pytest.raises(ValueError, match="bytes"):
         idx.add(42, np.array([1, 2], dtype=np.uint8))
 
 

@@ -54,6 +54,18 @@ def test_add_batch_keys(tmp_path):
         assert bytes(result[i]) == bytes(keys[i])
 
 
+def test_add_batch_list_bytes_keys(tmp_path):
+    """Add a batch of vectors with list[bytes] keys."""
+    idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
+    keys = [make_key(i) for i in range(5)]
+    vecs = random_vectors(5, ndim=8)
+    result = idx.add(keys, vecs)
+    assert len(idx) == 5
+    assert result.dtype == UUID_DTYPE
+    for i in range(5):
+        assert bytes(result[i]) == keys[i]
+
+
 def test_search_returns_v16_keys(tmp_path):
     """Search results contain V16 keys."""
     idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
@@ -606,17 +618,18 @@ def test_add_batch_v16_dtype_passthrough(tmp_path):
     assert result.dtype == UUID_DTYPE
 
 
-def test_add_list_keys_raises(tmp_path):
-    """List of bytes keys on add raises ValueError."""
+def test_add_list_bytes_keys_accepted(tmp_path):
+    """List of bytes(16) keys on add is accepted."""
     idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
-    with pytest.raises(ValueError, match="UUID keys must be bytes"):
-        idx.add([make_key(0), make_key(1)], random_vectors(2, ndim=8))
+    keys = [make_key(0), make_key(1)]
+    idx.add(keys, random_vectors(2, ndim=8))
+    assert len(idx) == 2
 
 
 def test_add_int_key_raises(tmp_path):
     """Integer key on add raises ValueError for uuid index."""
     idx = ShardedIndex128(ndim=8, path=tmp_path / "idx", dtype="f32")
-    with pytest.raises(ValueError, match="UUID keys must be bytes"):
+    with pytest.raises(ValueError, match="bytes"):
         idx.add(42, np.ones(8, dtype=np.float32))
 
 
