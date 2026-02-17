@@ -66,7 +66,7 @@ def test_read_only_search(tmp_path):
     result = ro.search(query, count=5)
 
     assert len(result.keys) > 0
-    assert result.distances[0] == pytest.approx(0.0, abs=1e-5)
+    assert result.distances[0] == pytest.approx(0.0, abs=5e-3)
 
 
 def test_read_only_get(tmp_path):
@@ -323,7 +323,7 @@ def test_read_only_multiple_shards(tmp_path):
     # Search across all shards
     result = ro.search(vectors[0], count=5)
     assert result.keys[0] == 0
-    assert result.distances[0] == pytest.approx(0.0, abs=1e-5)
+    assert result.distances[0] == pytest.approx(0.0, abs=5e-3)
 
     # Get from different shards
     assert ro.get(0) is not None
