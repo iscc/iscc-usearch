@@ -729,9 +729,18 @@ class ShardedIndex:
     ) -> None:
         """Save active shard and bloom filter to disk.
 
-        :param path_or_buffer: Ignored (uses internal path management)
+        ShardedIndex manages its own file layout — pass no arguments to save to the
+        directory configured at construction time.
+
+        :param path_or_buffer: Must be None. Raises TypeError if a path is provided.
         :param progress: Progress callback
+        :raises TypeError: If path_or_buffer is not None.
         """
+        if path_or_buffer is not None:
+            raise TypeError(
+                "ShardedIndex.save() does not accept a path argument. "
+                "Files are saved to the directory specified at construction time."
+            )
         # Save bloom filter if it exists
         if self._bloom is not None:
             bloom_path = self._path / BLOOM_FILENAME

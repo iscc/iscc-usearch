@@ -8,6 +8,7 @@ Confirms expected behavior for persisting index to disk:
 """
 
 import numpy as np
+import pytest
 
 from iscc_usearch.sharded import ShardedIndex
 
@@ -24,6 +25,15 @@ def test_save_and_load(tmp_path):
     index2 = ShardedIndex(ndim=64, path=tmp_path)
 
     assert len(index2) == 10
+
+
+def test_save_rejects_path_argument(tmp_path):
+    """Test save() raises TypeError when path_or_buffer is provided."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.random.rand(64).astype(np.float32))
+
+    with pytest.raises(TypeError, match="does not accept a path argument"):
+        index.save("/some/path")
 
 
 def test_save_empty_index(tmp_path):
