@@ -1097,8 +1097,29 @@ class ShardedIndex:
         raise NotImplementedError("clear() not supported for ShardedIndex")
 
     def reset(self) -> None:
-        """Not supported - would need to handle multiple files."""
-        raise NotImplementedError("reset() not supported for ShardedIndex")
+        """Release all resources and reset to empty-but-usable state.
+
+        Releases view shards, active shard, and bloom filter memory. Does not
+        delete files on disk. After reset, the index is empty and ready for
+        new add() calls with the same configuration.
+        """
+        # Release view shards (GC frees memory-mapped files)
+        self._view_shards = None
+        self._viewed_indexes.clear()
+
+        # Create fresh active shard (keeps index usable)
+        self._active_shard = self._create_shard()
+        self._active_shard_path = None
+
+        # Clear bloom filter (reset to initial state, not destroyed)
+        if self._bloom is not None:
+            self._bloom.clear()
+
+        # Reset amortized size check
+        self._adds_until_size_check = 0
+
+        # Invalidate shard cache
+        self._invalidate_shard_cache()
 
     @property
     def keys(self) -> ShardedIndexedKeys:

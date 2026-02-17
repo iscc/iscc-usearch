@@ -10,7 +10,6 @@ Confirms that append-only and unsupported operations raise NotImplementedError:
 - pairwise_distance
 - copy
 - clear
-- reset
 """
 
 import pytest
@@ -80,11 +79,3 @@ def test_clear_not_supported(tmp_path):
 
     with pytest.raises(NotImplementedError, match="not supported"):
         index.clear()
-
-
-def test_reset_not_supported(tmp_path):
-    """Test reset raises NotImplementedError."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-
-    with pytest.raises(NotImplementedError, match="not supported"):
-        index.reset()
