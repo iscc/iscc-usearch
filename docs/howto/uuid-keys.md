@@ -182,6 +182,4 @@ silent incorrect results.
 ## Limitations
 
 - **No auto-keys**: `keys=None` raises `ValueError`. All keys must be explicit.
-- **Append-only**: Same as standard sharded indexes — no `remove()`, `copy()`, or `clear()`.
-    `upsert()` is available on the single-file `Index` (including uuid keys) but not on sharded
-    indexes. Use `add_once()` for skip-if-exists semantics on sharded indexes.
+- `copy()` / `clear()` raise `NotImplementedError` (same as standard sharded indexes).

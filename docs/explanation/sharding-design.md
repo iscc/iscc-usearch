@@ -92,18 +92,37 @@ searched separately. The two result sets are then combined:
 The default `shard_size` of 1 GB is a reasonable starting point for most workloads. Tune it based
 on your read/write ratio -- see [Performance](performance.md) for benchmark data.
 
-## Append-only design
+## Tombstone-based deletion
 
-`ShardedIndex` is append-only:
+View shards are memory-mapped and read-only at the filesystem level. `remove()` handles this by
+using two strategies:
 
-- No `remove()`: view shards are read-only and USearch does not support efficient single-key
-    deletion from memory-mapped files.
-- No `clear()` / `copy()`: would require coordinating across or deep-copying multiple shard files.
+- **Active shard entries**: removed immediately via USearch's lazy deletion (the HNSW node is
+    marked as deleted internally).
+- **View shard entries**: tracked in a `_tombstones` set. Tombstoned keys are suppressed in search
+    results and iterators without modifying the view shard files.
 
-`reset()` releases all in-memory resources (view shards, active shard, bloom filter) without
-deleting files on disk. After reset, the index is empty and ready for new `add()` calls.
+Tombstones are persisted as `tombstones.npy` alongside shard files, so deletion state survives
+save/load cycles.
 
-`add_once()` provides skip-if-exists semantics — it adds a vector only when its key does not
-already exist. This enables idempotent batch loads without requiring `remove()`.
+### Compaction
 
-For full insert-or-update semantics, use `NphdIndex` with `upsert()` (single-file only).
+Over time, tombstoned entries waste disk space and increase search fan-out overhead. `compact()`
+rebuilds view shards to physically remove tombstoned and cross-shard duplicate entries:
+
+1. Collect live entries from each view shard (newest-to-oldest, active shard keys authoritative).
+1. Release all memory-mapped references (required on Windows).
+1. Rebuild shard files containing only live entries; delete empty shards.
+1. Reopen rebuilt shards in view mode, rebuild the bloom filter, and save.
+
+Compaction is optional — tombstoned entries are already filtered from reads. Compact when disk
+space matters or tombstone density is high.
+
+### Additional operations
+
+- `upsert()` provides insert-or-update semantics by calling `remove()` then `add()`. Batch upsert
+    deduplicates within the batch (last occurrence wins).
+- `add_once()` provides skip-if-exists semantics — it adds a vector only when its key does not
+    already exist. Useful for idempotent batch loads.
+- `reset()` releases all in-memory resources (view shards, active shard, bloom filter, tombstones)
+    without deleting files on disk.

@@ -58,8 +58,9 @@ index.upsert(keys, vectors)
 
 ## Variable-length batch upsert
 
-Batch `upsert()` requires all vectors to have the same length because it normalizes inputs to a
-2D array internally. For variable-length vectors, call `upsert()` one at a time:
+On single-file indexes (`NphdIndex`), batch `upsert()` requires all vectors to have the same
+length because it normalizes inputs to a 2D array internally. For variable-length vectors, call
+`upsert()` one at a time:
 
 ```python
 variable_keys = [10, 11, 12]
@@ -73,11 +74,46 @@ for key, vec in zip(variable_keys, variable_vecs):
     index.upsert(key, vec)
 ```
 
+`ShardedNphdIndex` and `ShardedNphdIndex128` accept mixed-length vectors in batch `upsert()`
+directly — no need to loop one at a time.
+
+## Upsert on sharded indexes
+
+`upsert()` is available on all sharded index variants (`ShardedIndex`, `ShardedIndex128`,
+`ShardedNphdIndex`, `ShardedNphdIndex128`). It uses tombstone-based deletion for view shard
+entries and inserts the new vector into the active shard:
+
+```python
+from iscc_usearch import ShardedNphdIndex
+
+index = ShardedNphdIndex(max_dim=256, path="./my_index")
+
+vec = np.array([255, 128, 64, 32], dtype=np.uint8)
+index.upsert(1, vec)
+
+# Update with different vector
+vec_new = np.array([0, 0, 0, 0], dtype=np.uint8)
+index.upsert(1, vec_new)
+print(index.get(1))  # array([0, 0, 0, 0], dtype=uint8)
+```
+
+Batch upsert deduplicates within the batch — last occurrence wins:
+
+```python
+keys = [1, 2, 1]  # duplicate key 1
+vecs = np.random.randint(0, 256, size=(3, 8), dtype=np.uint8)
+index.upsert(keys, vecs)  # key 1 gets the third vector
+```
+
+!!! tip
+
+    After many upserts, stale duplicate entries accumulate in view shards. Call `compact()` to
+    rebuild view shards and reclaim disk space. See the
+    [Sharding how-to](sharding.md#compact-the-index) for details.
+
 ## Skip-if-exists with add_once()
 
-Sharded indexes do not support `upsert()` (which requires `remove()`), but they provide
-`add_once()` for skip-if-exists semantics. `add_once()` adds a vector only if its key does not
-already exist — first-write-wins:
+`add_once()` adds a vector only if its key does not already exist — first-write-wins:
 
 ```python
 from iscc_usearch import ShardedNphdIndex
@@ -99,24 +135,16 @@ duplicates. Use it for idempotent batch loads where the first write should win.
 
 ## When to use add vs upsert vs add_once
 
-| Scenario                          | Use          | Available on             |
-| --------------------------------- | ------------ | ------------------------ |
-| Keys are guaranteed unique        | `add()`      | All indexes              |
-| Keys may repeat, update vectors   | `upsert()`   | Single-file indexes only |
-| Keys may repeat, keep first write | `add_once()` | Sharded indexes only     |
-| Bulk initial load                 | `add()`      | All indexes              |
-| Incremental updates               | `upsert()`   | Single-file indexes only |
-| Idempotent batch load (sharded)   | `add_once()` | Sharded indexes only     |
+| Scenario                          | Use          | Available on    |
+| --------------------------------- | ------------ | --------------- |
+| Keys are guaranteed unique        | `add()`      | All indexes     |
+| Keys may repeat, update vectors   | `upsert()`   | All indexes     |
+| Keys may repeat, keep first write | `add_once()` | Sharded indexes |
+| Bulk initial load                 | `add()`      | All indexes     |
+| Incremental updates               | `upsert()`   | All indexes     |
+| Idempotent batch load (sharded)   | `add_once()` | Sharded indexes |
 
 !!! note
 
     `upsert()` and `add_once()` both require explicit keys. Passing `keys=None` raises
-    `ValueError`.
-
-!!! note
-
-    `upsert()` is available on single-file indexes only (`NphdIndex`, `Index`), including
-    uuid-keyed indexes. Sharded indexes do not support `upsert()` because they use an
-    append-only design without `remove()`. Use `add_once()` on sharded indexes instead.
-
-    The number of keys and vectors must match, or `ValueError` is raised.
+    `ValueError`. The number of keys and vectors must match, or `ValueError` is raised.

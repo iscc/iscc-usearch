@@ -78,13 +78,13 @@ classes stay clean.
 
 ### Choosing an index class
 
-| Class                 | Var-len | Keys    | Shards | Upsert | Add-once | Use case                              |
-| --------------------- | :-----: | ------- | :----: | :----: | :------: | ------------------------------------- |
-| `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    |    —     | ISCC codes, fits in RAM               |
-| `ShardedIndex`        |    —    | uint64  |   ✓    |   —    |    ✓     | Fixed-length vectors, large scale     |
-| `ShardedIndex128`     |    —    | 128-bit |   ✓    |   —    |    ✓     | Fixed-length vectors, 128-bit keys    |
-| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   —    |    ✓     | ISCC codes, large scale (production)  |
-| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   —    |    ✓     | ISCC codes, large scale, 128-bit keys |
+| Class                 | Var-len | Keys    | Shards | Upsert | Remove | Compact | Use case                              |
+| --------------------- | :-----: | ------- | :----: | :----: | :----: | :-----: | ------------------------------------- |
+| `NphdIndex`           |    ✓    | uint64  |   —    |   ✓    |   ✓    |    —    | ISCC codes, fits in RAM               |
+| `ShardedIndex`        |    —    | uint64  |   ✓    |   ✓    |   ✓    |    ✓    | Fixed-length vectors, large scale     |
+| `ShardedIndex128`     |    —    | 128-bit |   ✓    |   ✓    |   ✓    |    ✓    | Fixed-length vectors, 128-bit keys    |
+| `ShardedNphdIndex`    |    ✓    | uint64  |   ✓    |   ✓    |   ✓    |    ✓    | ISCC codes, large scale (production)  |
+| `ShardedNphdIndex128` |    ✓    | 128-bit |   ✓    |   ✓    |   ✓    |    ✓    | ISCC codes, large scale, 128-bit keys |
 
 !!! note "About `Index`"
 
@@ -108,11 +108,21 @@ For `ShardedNphdIndex`, the write path adds bloom filter updates and automatic s
 the active shard exceeds `shard_size`, it is saved to disk and reopened as a memory-mapped view
 while a fresh active shard is created.
 
+### Delete path (remove)
+
+For `ShardedNphdIndex`, `remove()` checks the bloom filter first for fast rejection. Active shard
+entries are removed immediately via USearch's lazy deletion. View shard entries are tombstoned —
+tracked in a `_tombstones` set and persisted as `tombstones.npy`. Tombstoned entries are suppressed
+in search results and iterators. `compact()` rebuilds view shards to physically remove tombstoned
+entries and reclaim disk space.
+
 ### Read path (search)
 
 The query is padded and searched across all shards in parallel (active shard in RAM plus
 memory-mapped view shards). Each shard invokes the NPHD metric for distance computations, returning
-distances in [0.0, 1.0]. Results are merged via argsort and top-k selection.
+distances in [0.0, 1.0]. Results are merged via argsort and top-k selection. When tombstones or
+cross-shard duplicates exist, view shard results are oversampled and filtered to exclude stale
+entries before merging.
 
 ## Concurrency model
 

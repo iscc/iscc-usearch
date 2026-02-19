@@ -13,7 +13,7 @@ Switch to `ShardedNphdIndex` when:
 
 - Your dataset exceeds available RAM.
 - Insert throughput degrades as the index grows because HNSW graph construction slows with size.
-- You need append-only storage with transparent shard rotation.
+- You need persistent storage with transparent shard rotation.
 
 ## Create a sharded index
 
@@ -36,9 +36,10 @@ my_shards/
     shard_001.usearch   # view shard (memory-mapped, read-only)
     shard_002.usearch   # active shard (RAM, read-write)
     bloom.isbf          # bloom filter state
+    tombstones.npy      # deletion/dedup state (if any removals or upserts pending)
 ```
 
-Completed shards are immutable. The highest-numbered shard is the active shard.
+Completed shards are read-only. The highest-numbered shard is the active shard.
 
 ## Add data
 
@@ -170,7 +171,7 @@ trade-off details.
 ## Properties
 
 ```python
-print(index.size)  # Total vectors across all shards
+print(index.size)  # Logical vector count (excludes tombstoned entries)
 print(index.shard_count)  # Number of shard files
 print(index.max_dim)  # Maximum bits per vector
 
@@ -192,15 +193,106 @@ indexing), use the 128-bit variants:
 The API is identical except that keys are `bytes` of length 16 (single) or `np.dtype('V16')`
 arrays (batch) instead of integers. See the [UUID keys how-to](uuid-keys.md) for details.
 
+## Remove vectors
+
+`remove()` deletes vectors by key. Active shard entries are removed immediately via USearch's
+lazy deletion. View shard entries are tombstoned — suppressed on reads and cleaned on
+`compact()`:
+
+```python
+# Single remove
+index.remove(42)
+
+# Batch remove
+index.remove([10, 11, 12])
+
+# Python del syntax
+del index[42]
+```
+
+Keys not found in the index are silently ignored.
+
+!!! note
+
+    `remove()` does not support multi-label indexes (`multi=True`). Passing `multi=True` raises
+    `ValueError`.
+
+## Upsert (insert-or-update)
+
+`upsert()` ensures each key maps to the given vector:
+
+- **Key is new**: inserts the vector.
+- **Key exists**: removes the old entry and inserts the new vector.
+
+```python
+import numpy as np
+
+vec = np.array([255, 128, 64, 32], dtype=np.uint8)
+index.upsert(1, vec)
+
+# Update with different vector
+vec_new = np.array([0, 0, 0, 0], dtype=np.uint8)
+index.upsert(1, vec_new)
+print(index.get(1))  # array([0, 0, 0, 0], dtype=uint8)
+```
+
+Batch upsert deduplicates within the batch (last occurrence wins):
+
+```python
+keys = [1, 2, 1]  # duplicate key 1
+vecs = np.random.randint(0, 256, size=(3, 8), dtype=np.uint8)
+index.upsert(keys, vecs)  # key 1 gets the third vector
+```
+
+!!! note
+
+    `upsert()` does not support multi-label indexes (`multi=True`). Passing `multi=True` raises
+    `ValueError`.
+
+See the [Upsert how-to](upsert.md) for details on `upsert()` vs `add()` vs `add_once()`.
+
+## Compact the index
+
+After removing or upserting vectors, tombstoned entries still occupy space in view shard files.
+`compact()` rebuilds view shards to reclaim that space:
+
+```python
+removed = index.compact()
+print(f"Compaction removed {removed} entries")
+```
+
+Compaction processes shards newest-to-oldest, dropping tombstoned entries and cross-shard
+duplicates. It then saves the rebuilt index (including an updated bloom filter).
+
+!!! tip
+
+    Compaction is optional. Tombstoned entries are already filtered from search results and
+    iterators. Compact when disk space matters or tombstone density is high.
+
+## Shard directory layout
+
+After adding, removing, and saving data, the directory looks like this:
+
+```
+my_shards/
+    shard_000.usearch     # view shard (memory-mapped, read-only)
+    shard_001.usearch     # view shard (memory-mapped, read-only)
+    shard_002.usearch     # active shard (RAM, read-write)
+    bloom.isbf            # bloom filter state
+    tombstones.npy        # deletion/dedup state (present after remove or upsert)
+```
+
+The `tombstones.npy` file persists tombstoned keys and signals that cross-shard deduplication
+filtering is needed. It is created on first `remove()` or `upsert()` and cleared after
+`compact()`.
+
 ## Limitations
 
-`ShardedNphdIndex` (and `ShardedIndex`) use an **append-only** design. The following operations
-raise `NotImplementedError`:
+The following operations raise `NotImplementedError`:
 
-- `remove()` — vectors cannot be deleted.
 - `copy()` / `clear()` — would require handling multiple files.
 - `join()` / `cluster()` / `pairwise_distance()` — not applicable to sharded storage.
-- `upsert()` — not supported (append-only design requires `remove()`).
+- `rename()` — not supported.
 
 !!! warning "Single-process only"
 

@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `remove()` method for all sharded index variants — tombstone-based deletion for view shard entries,
+    lazy USearch deletion for active shard entries
+- `upsert()` method for all sharded index variants — insert-or-update with last-write-wins batch
+    deduplication
+- `compact()` method for all sharded index variants — rebuilds view shards excluding tombstoned and
+    cross-shard duplicate entries to reclaim space
+- `__delitem__` support (`del index[key]`) as alias for `remove()`
+- Dedup-aware `keys` and `vectors` iterators — active shard authoritative, view shard entries filtered
+    by tombstones and cross-shard overlap
+- Cross-shard search result suppression — tombstoned and stale view shard copies are filtered from
+    search results with adaptive oversampling
+- Persistent tombstone tracking (`tombstones.npy`) — deletion state survives save/load cycles
+
+### Fixed
+
+- Widen distance tolerance for HNSW approximate search test on macOS
+
 ## [0.3.0] - 2026-02-17
 
 ### Added
@@ -94,3 +115,4 @@ Initial release of iscc-usearch.
 [0.2.0]: https://github.com/iscc/iscc-usearch/compare/0.1.0...0.2.0
 [0.2.1]: https://github.com/iscc/iscc-usearch/compare/0.2.0...0.2.1
 [0.3.0]: https://github.com/iscc/iscc-usearch/compare/0.2.1...0.3.0
+[unreleased]: https://github.com/iscc/iscc-usearch/compare/0.3.0...HEAD

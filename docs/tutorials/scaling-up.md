@@ -16,10 +16,11 @@ Use `ShardedNphdIndex` instead of `NphdIndex` when:
 
 - Your dataset exceeds available RAM.
 - Insert throughput degrades as the index grows.
-- You need persistent, append-only storage with automatic shard rotation.
+- You need persistent storage with automatic shard rotation.
 
 `ShardedNphdIndex` combines variable-length NPHD support with transparent sharding. The API is
-nearly identical to `NphdIndex` -- you add vectors and search without managing shards manually.
+nearly identical to `NphdIndex` -- you add, remove, upsert, and search vectors without managing
+shards manually.
 
 ## Create a sharded index
 
@@ -91,6 +92,30 @@ vecs = index.get([0, 100, 200])
 The bloom filter provides O(1) rejection of non-existent keys, so lookups stay fast regardless of
 shard count.
 
+## Remove and update vectors
+
+Remove vectors by key. Active shard entries are deleted immediately; view shard entries are
+tombstoned and filtered from search results:
+
+```python
+# Remove a single vector
+index.remove(0)
+
+# Remove a batch
+index.remove([100, 101, 102])
+
+# Upsert — insert-or-update
+vec_updated = np.random.randint(0, 256, size=8, dtype=np.uint8)
+index.upsert(200, vec_updated)
+```
+
+After many removals or upserts, call `compact()` to rebuild view shards and reclaim disk space:
+
+```python
+removed = index.compact()
+print(f"Compaction removed {removed} stale entries")
+```
+
 ## Save and reopen
 
 ```python
@@ -108,7 +133,7 @@ print(matches.keys)
 ## Inspect the index
 
 ```python
-print(index.size)  # Total vectors across all shards
+print(index.size)  # Logical vector count (excludes tombstoned entries)
 print(index.shard_count)  # Number of shard files
 print(index.max_dim)  # Maximum bits per vector
 ```
@@ -123,9 +148,10 @@ my_index/
     shard_001.usearch   # view shard (memory-mapped, read-only)
     shard_002.usearch   # active shard (RAM, read-write)
     bloom.isbf          # bloom filter for key lookups
+    tombstones.npy      # deletion/dedup state (if any removals or upserts pending)
 ```
 
-Completed shards are immutable. Only the highest-numbered shard is the active shard.
+Completed shards are read-only. Only the highest-numbered shard is the active shard.
 
 ## Open for read-only access
 
