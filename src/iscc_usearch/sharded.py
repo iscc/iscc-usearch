@@ -2,12 +2,15 @@
 Sharded index implementation for scalable vector storage.
 
 Provides a drop-in replacement for usearch Index with automatic sharding support.
-Wraps multiple Index files (shards) for append-only storage that scales beyond
-single-file limitations.
+Wraps multiple Index files (shards) with full CRUD operations. Finished shards are
+memory-mapped (view mode) for read-only access, while the active shard is fully loaded
+for read-write operations. Tombstones track deletions from view shards; compaction
+rebuilds view shards to reclaim space.
 """
 
 from __future__ import annotations
 
+import itertools
 import os
 from pathlib import Path
 from typing import Any, Callable, Sequence, cast
@@ -30,6 +33,9 @@ __all__ = ["ShardedIndex", "ShardedIndex128", "ShardedIndexedKeys", "ShardedInde
 
 # Default bloom filter file name
 BLOOM_FILENAME = "bloom.isbf"
+
+# Tombstone file name for deleted view shard entries
+TOMBSTONE_FILENAME = "tombstones.npy"
 
 # Default shard size: 1GB
 DEFAULT_SHARD_SIZE = 1024 * 1024 * 1024
@@ -69,6 +75,9 @@ def _vector_width(ndim: int, dtype: ScalarKind) -> int:
     return ndim
 
 
+_SENTINEL = object()
+
+
 class ShardedIndexedKeys:
     """Lazy key iterator across all shards.
 
@@ -76,6 +85,8 @@ class ShardedIndexedKeys:
     Supports iteration, length, indexing, slicing, and numpy array conversion.
 
     This is a live view - it reflects the current state of the index at iteration time.
+    When tombstones exist, keys are deduplicated: active shard keys appear first,
+    then view shard keys newest-to-oldest with tombstoned and already-seen keys excluded.
     """
 
     def __init__(self, sharded_index: "ShardedIndex") -> None:
@@ -89,62 +100,115 @@ class ShardedIndexedKeys:
         """Return total number of keys across all shards."""
         return len(self._index)
 
+    def _needs_filtering(self) -> bool:
+        """Check if iteration needs tombstone/dedup filtering."""
+        return bool(self._index._tombstones) or self._index._needs_compact
+
     def __iter__(self):
         """Yield keys from all shards lazily.
 
-        Iterates through view shards first, then active shard.
+        Without cross-shard overlap: view shards then active shard (no dedup needed).
+        With overlap: active shard first (authoritative), then view shards
+        newest-to-oldest with tombstoned and already-seen keys excluded.
         """
-        for idx in self._index._viewed_indexes:
-            yield from idx.keys
+        tombstones = self._index._tombstones
+
+        # Fast path: no cross-shard overlap — keys are unique across shards
+        if not tombstones and not self._index._needs_compact:
+            for idx in self._index._viewed_indexes:
+                yield from idx.keys
+            if self._index._active_shard is not None:
+                yield from self._index._active_shard.keys
+            return
+
+        seen: set = set()
+
+        # Active shard first (authoritative)
         if self._index._active_shard is not None:
-            yield from self._index._active_shard.keys
+            for key in self._index._active_shard.keys:
+                seen.add(self._index._tombstone_key(key))
+                yield key
+
+        # View shards newest-to-oldest, skip tombstoned + already-seen
+        for idx in reversed(self._index._viewed_indexes):
+            for key in idx.keys:
+                canon = self._index._tombstone_key(key)
+                if canon not in tombstones and canon not in seen:
+                    seen.add(canon)
+                    yield key
 
     def __getitem__(self, index: int | slice) -> int | NDArray[np.uint64]:
         """Support indexing and slicing.
+
+        Warning: Slices with active tombstones or an active shard materialize
+        all live keys into memory. Avoid on larger-than-RAM indexes.
 
         :param index: Integer index or slice
         :return: Single key or array of keys
         """
         if isinstance(index, slice):
-            # Handle slicing by materializing the requested range
             arr = np.asarray(self)
             return arr[index]
-        else:
-            # Handle single index
+
+        # Fast path: no filtering needed - len() is exact
+        if not self._needs_filtering():
             if index < 0:
                 index = len(self) + index
             if index < 0 or index >= len(self):
                 raise IndexError("index out of range")
-
-            # Iterate through shards to find the key at the given index
             current = 0
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
                     return idx.keys[index - current]
                 current += shard_len
-
             if self._index._active_shard is not None:
                 return self._index._active_shard.keys[index - current]
-
             raise IndexError("index out of range")  # pragma: no cover
 
+        # Slow path: dedup/tombstone filtering - len() may overcount
+        if index < 0:
+            # Two-pass: count exact items first, then islice (avoids full materialization)
+            actual_len = sum(1 for _ in self)
+            index = actual_len + index
+            if index < 0:
+                raise IndexError("index out of range")
+        result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
+        if result is _SENTINEL:
+            raise IndexError("index out of range")
+        return result
+
     def __array__(self, dtype: Any = None) -> NDArray:
-        """Convert to numpy array by concatenating shard key arrays.
+        """Convert to numpy array.
+
+        Warning: With active tombstones, this materializes all live keys
+        into memory. Avoid on larger-than-RAM indexes.
 
         :param dtype: Optional dtype override
         :return: Numpy array of all keys
         """
-        arrays = []
-        for idx in self._index._viewed_indexes:
-            if len(idx) > 0:  # pragma: no branch - viewed shards are never empty
-                arrays.append(np.asarray(idx.keys))
-        if self._index._active_shard is not None and len(self._index._active_shard) > 0:
-            arrays.append(np.asarray(self._index._active_shard.keys))
-        if not arrays:
+        # Fast path: no filtering needed
+        if not self._needs_filtering():
+            arrays = []
+            for idx in self._index._viewed_indexes:
+                if len(idx) > 0:  # pragma: no branch
+                    arrays.append(np.asarray(idx.keys))
+            if self._index._active_shard is not None and len(self._index._active_shard) > 0:
+                arrays.append(np.asarray(self._index._active_shard.keys))
+            if not arrays:
+                result = np.array([], dtype=self._index._key_dtype)
+            else:
+                result = np.concatenate(arrays)
+            if dtype is not None and dtype != result.dtype:
+                return result.astype(dtype)
+            return result
+
+        # Slow path: materialize through iterator
+        keys_list = list(self)
+        if not keys_list:
             result = np.array([], dtype=self._index._key_dtype)
         else:
-            result = np.concatenate(arrays)
+            result = np.array(keys_list, dtype=self._index._key_dtype)
         if dtype is not None and dtype != result.dtype:
             return result.astype(dtype)
         return result
@@ -161,6 +225,9 @@ class ShardedIndexedVectors:
     Supports iteration, length, indexing, slicing, and numpy array conversion.
 
     This is a live view - it reflects the current state of the index at iteration time.
+    When tombstones exist, vectors are deduplicated in sync with ShardedIndexedKeys:
+    active shard first, then view shards newest-to-oldest with tombstoned and duplicate
+    keys excluded.
 
     Note: Unlike usearch Index.vectors which returns an np.ndarray immediately,
     this returns a lazy iterator appropriate for larger-than-RAM indexes.
@@ -177,24 +244,53 @@ class ShardedIndexedVectors:
         """Return total number of vectors across all shards."""
         return len(self._index)
 
+    def _needs_filtering(self) -> bool:
+        """Check if iteration needs tombstone/dedup filtering."""
+        return bool(self._index._tombstones) or self._index._needs_compact
+
     def __iter__(self):
         """Yield vectors from all shards lazily.
 
-        Iterates through view shards first, then active shard.
+        Without cross-shard overlap: view shards then active shard (no dedup needed).
+        With overlap: active shard first, then view shards newest-to-oldest
+        with tombstoned and duplicate keys' vectors excluded.
         """
-        for idx in self._index._viewed_indexes:
-            yield from idx.vectors
+        tombstones = self._index._tombstones
+
+        # Fast path: no cross-shard overlap — keys are unique across shards
+        if not tombstones and not self._index._needs_compact:
+            for idx in self._index._viewed_indexes:
+                yield from idx.vectors
+            if self._index._active_shard is not None:
+                yield from self._index._active_shard.vectors
+            return
+
+        seen: set = set()
+
+        # Active shard first
         if self._index._active_shard is not None:
-            yield from self._index._active_shard.vectors
+            for key, vec in zip(self._index._active_shard.keys, self._index._active_shard.vectors):
+                seen.add(self._index._tombstone_key(key))
+                yield vec
+
+        # View shards newest-to-oldest
+        for idx in reversed(self._index._viewed_indexes):
+            for key, vec in zip(idx.keys, idx.vectors):
+                canon = self._index._tombstone_key(key)
+                if canon not in tombstones and canon not in seen:
+                    seen.add(canon)
+                    yield vec
 
     def __getitem__(self, index: int | slice) -> NDArray[Any]:
         """Support indexing and slicing.
+
+        Warning: Slices with active tombstones materialize all vectors into
+        memory. Avoid on larger-than-RAM indexes.
 
         :param index: Integer index or slice
         :return: Single vector or array of vectors
         """
         if isinstance(index, slice):
-            # Handle slicing by materializing the requested range
             vectors = list(self)
             sliced = vectors[index]
             if not sliced:
@@ -202,25 +298,34 @@ class ShardedIndexedVectors:
                 width = _vector_width(self._index.ndim, self._index.dtype)
                 return np.empty((0, width), dtype=npdtype)
             return np.vstack(sliced)
-        else:
-            # Handle single index
+
+        # Fast path: no filtering needed - len() is exact
+        if not self._needs_filtering():
             if index < 0:
                 index = len(self) + index
             if index < 0 or index >= len(self):
                 raise IndexError("index out of range")
-
-            # Iterate through shards to find the vector at the given index
             current = 0
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
                     return idx.vectors[index - current]
                 current += shard_len
-
             if self._index._active_shard is not None:
                 return self._index._active_shard.vectors[index - current]
-
             raise IndexError("index out of range")  # pragma: no cover
+
+        # Slow path: dedup/tombstone filtering - len() may overcount
+        if index < 0:
+            # Two-pass: count exact items first, then islice (avoids full materialization)
+            actual_len = sum(1 for _ in self)
+            index = actual_len + index
+            if index < 0:
+                raise IndexError("index out of range")
+        result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
+        if result is _SENTINEL:
+            raise IndexError("index out of range")
+        return result
 
     def __array__(self, dtype: Any = None) -> NDArray[Any]:
         """Support numpy array conversion.
@@ -230,6 +335,23 @@ class ShardedIndexedVectors:
         :param dtype: Optional dtype for the result array
         :return: 2D numpy array of all vectors
         """
+        # Fast path: no filtering
+        if not self._needs_filtering():
+            arrays = []
+            for idx in self._index._viewed_indexes:
+                if len(idx) > 0:  # pragma: no branch
+                    arrays.append(np.asarray(idx.vectors))
+            if self._index._active_shard is not None and len(self._index._active_shard) > 0:
+                arrays.append(np.asarray(self._index._active_shard.vectors))
+            if not arrays:
+                default_dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
+                width = _vector_width(self._index.ndim, self._index.dtype)
+                return np.empty((0, width), dtype=dtype or default_dtype)
+            result = np.vstack(arrays)
+            if dtype is not None and result.dtype != dtype:
+                return result.astype(dtype)
+            return result
+
         vectors = list(self)
         if not vectors:
             default_dtype = SCALAR_KIND_TO_NUMPY_DTYPE.get(self._index.dtype, np.dtype(np.uint8))
@@ -246,12 +368,18 @@ class ShardedIndexedVectors:
 
 
 class ShardedIndex:
-    """Sharded vector index for scalable append-only storage.
+    """Sharded vector index with full CRUD support.
 
     Wraps usearch Index/Indexes to provide automatic sharding when the active
     shard exceeds the configured size limit. Finished shards are memory-mapped
     (view mode) for efficient read-only access, while the active shard is
     fully loaded (load mode) for read-write operations.
+
+    CRUD semantics (requires multi=False for remove/upsert):
+    - add(): append to active shard
+    - remove(): lazy-delete from active shard, tombstone in view shards
+    - upsert(): remove + add (last-write-wins for batch duplicates)
+    - compact(): rebuild view shards excluding tombstoned/duplicate entries
 
     CONCURRENCY: Single-process only. No file locking. Use async/await within
     a single process for concurrent access.
@@ -267,7 +395,7 @@ class ShardedIndex:
     :param shard_size: Size limit in bytes before rotating shards (default 1GB)
     :param bloom_filter: Enable bloom filter for fast non-existent key rejection
     :param read_only: Open all shards in view mode (memory-mapped, read-only). Raises
-        ValueError if no existing shards are found. Write operations raise IndexError.
+        ValueError if no existing shards are found. Write operations raise RuntimeError.
     """
 
     def __init__(
@@ -300,6 +428,14 @@ class ShardedIndex:
 
         # Initialize bloom filter (loaded/created in load/view)
         self._bloom: ScalableBloomFilter | None = None
+
+        # Tombstone set: keys deleted from view shards (canonical Python types)
+        self._tombstones: set = set()
+
+        # Cross-shard overlap flag: set when add() clears tombstones (creating
+        # duplicates across active and view shards). Cleared by compact().
+        # When True, iteration/search must apply dedup filtering.
+        self._needs_compact: bool = False
 
         # Amortized rotation check: skip O(n) serialized_length on every add
         self._adds_until_size_check: int = 0
@@ -357,6 +493,21 @@ class ShardedIndex:
     def _shard_batch_keys(self, keys_arr: NDArray) -> Any:
         """Convert batch key array to format for usearch shard operations."""
         return keys_arr.tolist()
+
+    def _tombstone_key(self, key: Any) -> int | bytes:
+        """Canonical Python type for tombstone set membership. Alias for _bloom_key()."""
+        return self._bloom_key(key)
+
+    def _tombstone_keys(self, keys_arr: Any) -> list:
+        """Canonical Python types for batch tombstone operations. Alias for _bloom_keys()."""
+        return self._bloom_keys(keys_arr)
+
+    def _tombstoned_mask(self, keys_arr: NDArray) -> NDArray[np.bool_]:
+        """Return boolean mask where True = key is tombstoned. Vectorized for uint64 keys."""
+        if not self._tombstones:
+            return np.zeros(len(keys_arr), dtype=bool)
+        tombstone_arr = np.fromiter(self._tombstones, dtype=np.uint64, count=len(self._tombstones))
+        return np.isin(keys_arr, tombstone_arr)
 
     @property
     def _key_dtype(self) -> np.dtype:
@@ -433,10 +584,17 @@ class ShardedIndex:
         result = self._active_shard.add(keys, vectors, copy=copy, threads=threads, log=log, progress=progress)
 
         # Always update bloom filter if it exists (keeps it in sync regardless of _use_bloom)
-        # Note: usearch always returns keys as numpy array, even for single adds
         if self._bloom is not None:
-            for key in np.atleast_1d(result):
-                self._bloom.add(self._bloom_key(key))
+            self._bloom.add_batch(self._bloom_keys(np.atleast_1d(result)))
+
+        # Discard tombstones for added keys (active shard is now authoritative).
+        # When tombstones are cleared, cross-shard duplicates remain in view shards
+        # until compact() — flag this so iteration/search applies dedup filtering.
+        if self._tombstones:
+            before = len(self._tombstones)
+            self._tombstones.difference_update(self._tombstone_keys(np.atleast_1d(result)))
+            if len(self._tombstones) < before:
+                self._needs_compact = True
 
         # Amortized rotation check: only compute serialized_length when countdown expires
         count_added = len(np.atleast_1d(result))
@@ -496,6 +654,46 @@ class ShardedIndex:
             return np.array([], dtype=self._key_dtype)
         return self.add(keys_arr[new_mask], vectors_arr[new_mask], **kwargs)
 
+    def upsert(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> int | NDArray:
+        """Insert or update vectors by key.
+
+        For new keys: adds to active shard.
+        For existing keys: removes old entry, adds new entry to active shard.
+
+        :param keys: Key(s) — None not accepted
+        :param vectors: Vector(s) to store
+        :return: Key(s) for stored vectors
+        :raises ValueError: If keys is None or multi=True
+        :raises RuntimeError: If index is read-only
+        """
+        self._check_writable()
+        if keys is None:
+            raise ValueError("upsert() requires explicit keys")
+        if self._config.get("multi"):
+            raise ValueError("upsert() requires multi=False")
+
+        if self._is_single_key(keys):
+            self.remove(keys)
+            return self.add(keys, vectors, **kwargs)
+
+        # Batch path — deduplicate within batch (last occurrence wins)
+        keys_arr = self._normalize_batch_keys(keys)
+        vectors_arr = np.asarray(vectors)
+        if vectors_arr.ndim == 1:
+            vectors_arr = vectors_arr.reshape(1, -1)
+        if len(keys_arr) != len(vectors_arr):
+            raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_arr)})")
+        # Reverse-unique: flip, unique, flip back — keeps last occurrence
+        _, unique_idx = np.unique(keys_arr[::-1], return_index=True)
+        unique_idx = len(keys_arr) - 1 - unique_idx
+        unique_idx.sort()
+        if len(unique_idx) < len(keys_arr):
+            keys_arr = keys_arr[unique_idx]
+            vectors_arr = vectors_arr[unique_idx]
+
+        self.remove(keys_arr)
+        return self.add(keys_arr, vectors_arr, **kwargs)
+
     def search(
         self,
         vectors: NDArray[Any],
@@ -508,6 +706,10 @@ class ShardedIndex:
         progress: Callable[[int, int], bool] | None = None,
     ) -> Matches | BatchMatches:
         """Search across all shards, merging and sorting results.
+
+        Active shard results suppress view shard versions of the same key.
+        Tombstoned keys are filtered from view shard results. Search is
+        approximate for cross-view-shard duplicates — compaction resolves those.
 
         :param vectors: Query vector or batch of vectors
         :param count: Maximum number of results per query
@@ -528,11 +730,16 @@ class ShardedIndex:
         view_results: Matches | BatchMatches | None = None
         active_results: Matches | BatchMatches | None = None
 
+        # Oversample view shards when cross-shard overlap exists (need room for filtering)
+        has_active = self._active_shard is not None and len(self._active_shard) > 0
+        need_filter = bool(self._tombstones) or self._needs_compact
+        view_count = self._oversampled_count(count) if need_filter else count
+
         # Search view shards (via hook - Indexes or per-shard iteration)
-        view_results = self._search_view_shards(vectors, count, threads, exact, progress)
+        view_results = self._search_view_shards(vectors, view_count, threads, exact, progress)
 
         # Search active shard (supports radius parameter)
-        if self._active_shard is not None and len(self._active_shard) > 0:
+        if self._active_shard is not None and has_active:
             active_results = self._active_shard.search(
                 vectors,
                 count=count,
@@ -542,6 +749,13 @@ class ShardedIndex:
                 log=log,
                 progress=progress,
             )
+
+        # Filter view results: remove tombstoned + active-shard-present keys
+        if view_results is not None and need_filter:
+            if is_single:
+                view_results = self._filter_single_view_results(cast(Matches, view_results))
+            else:
+                view_results = self._filter_batch_view_results(cast(BatchMatches, view_results))
 
         # Fast paths - avoid list allocation for common cases
         if view_results is None and active_results is None:
@@ -553,7 +767,10 @@ class ShardedIndex:
         if active_results is None:
             # Apply radius filter (Indexes.search doesn't support radius)
             if radius < float("inf"):
-                return self._apply_radius_filter(view_results, radius, is_single)
+                view_results = self._apply_radius_filter(view_results, radius, is_single)
+            # Truncate oversampled results to requested count
+            if need_filter:
+                view_results = self._truncate_results(view_results, count, is_single)
             return view_results
 
         # Merge results from both sources (applies radius filter)
@@ -578,16 +795,20 @@ class ShardedIndex:
         """Get a single vector by key from any shard."""
         # Fast path: bloom filter says definitely not present
         if self._use_bloom and self._bloom is not None:
-            if not self._bloom.contains(key):
+            if not self._bloom.contains(self._bloom_key(key)):
                 return None
 
-        # Check active shard first
+        # Active shard wins — always check first
         if self._active_shard is not None:
             if self._active_shard.contains(key):
                 return self._active_shard.get(key, dtype=dtype)
 
-        # Check view shards
-        for idx in self._viewed_indexes:
+        # Tombstone check — skip view shards if tombstoned
+        if self._tombstone_key(key) in self._tombstones:
+            return None
+
+        # Check view shards (newest first)
+        for idx in reversed(self._viewed_indexes):
             if idx.contains(key):
                 return idx.get(key, dtype=dtype)
 
@@ -639,8 +860,14 @@ class ShardedIndex:
         if self._active_shard is not None:
             process_shard(self._active_shard)
 
-        # Process view shards
-        for idx in self._viewed_indexes:
+        # Mark tombstoned keys as found (result stays None)
+        if self._tombstones and not found.all():
+            for i in range(n):
+                if not found[i] and self._tombstone_key(keys_arr[i]) in self._tombstones:
+                    found[i] = True
+
+        # Process view shards (newest first)
+        for idx in reversed(self._viewed_indexes):
             if found.all():
                 break
             process_shard(idx)
@@ -663,16 +890,20 @@ class ShardedIndex:
         """Check if a single key exists in any shard."""
         # Fast path: bloom filter says definitely not present
         if self._use_bloom and self._bloom is not None:
-            if not self._bloom.contains(key):
+            if not self._bloom.contains(self._bloom_key(key)):
                 return False
 
-        # Check active shard first (most likely location for recent keys)
+        # Active shard wins — always check first
         if self._active_shard is not None:
             if self._active_shard.contains(key):
                 return True
 
-        # Check view shards
-        for idx in self._viewed_indexes:
+        # Tombstone check — skip view shards if tombstoned
+        if self._tombstone_key(key) in self._tombstones:
+            return False
+
+        # Check view shards (newest first)
+        for idx in reversed(self._viewed_indexes):
             if idx.contains(key):
                 return True
 
@@ -711,11 +942,25 @@ class ShardedIndex:
             partial_result |= np.asarray(active_result, dtype=bool)
 
         # Check view shards
-        for idx in self._viewed_indexes:
-            if partial_result.all():
-                break  # Short-circuit: all keys found
-            shard_result = idx.contains(self._shard_batch_keys(keys_to_check))
-            partial_result |= np.asarray(shard_result, dtype=bool)
+        if self._tombstones:
+            # Tombstones exist — skip tombstoned keys, check newest first
+            tombstoned = self._tombstoned_mask(keys_to_check)
+            for idx in reversed(self._viewed_indexes):
+                if (partial_result | tombstoned).all():
+                    break
+                check_mask = ~partial_result & ~tombstoned
+                check_indices = np.where(check_mask)[0]
+                if len(check_indices) == 0:  # pragma: no cover – guarded by .all() check above
+                    break
+                shard_result = idx.contains(self._shard_batch_keys(keys_to_check[check_indices]))
+                partial_result[check_indices] |= np.asarray(shard_result, dtype=bool)
+        else:
+            # No tombstones — simple loop, check all keys against each shard
+            for idx in self._viewed_indexes:
+                if partial_result.all():
+                    break
+                shard_result = idx.contains(self._shard_batch_keys(keys_to_check))
+                partial_result |= np.asarray(shard_result, dtype=bool)
 
         # Map partial results back to full result array
         result[indices_to_check] = partial_result
@@ -740,13 +985,17 @@ class ShardedIndex:
         """Count occurrences of a single key across all shards."""
         # Fast path: bloom filter says definitely not present
         if self._use_bloom and self._bloom is not None:
-            if not self._bloom.contains(key):
+            if not self._bloom.contains(self._bloom_key(key)):
                 return 0
 
         total = 0
 
         if self._active_shard is not None:
             total += self._active_shard.count(key)
+
+        # Skip view shards for tombstoned keys
+        if self._tombstone_key(key) in self._tombstones:
+            return total
 
         for idx in self._viewed_indexes:
             total += idx.count(key)
@@ -780,8 +1029,20 @@ class ShardedIndex:
                 self._active_shard.count(self._shard_batch_keys(keys_to_count)), dtype=np.uint64
             )
 
-        for idx in self._viewed_indexes:
-            partial_total += np.asarray(idx.count(self._shard_batch_keys(keys_to_count)), dtype=np.uint64)
+        # Count in view shards, skipping tombstoned keys
+        if self._tombstones:
+            tombstoned = self._tombstoned_mask(keys_to_count)
+            not_tombstoned = ~tombstoned
+            if not_tombstoned.any():
+                nt_indices = np.where(not_tombstoned)[0]
+                nt_keys = keys_to_count[nt_indices]
+                for idx in self._viewed_indexes:
+                    partial_total[nt_indices] += np.asarray(
+                        idx.count(self._shard_batch_keys(nt_keys)), dtype=np.uint64
+                    )
+        else:
+            for idx in self._viewed_indexes:
+                partial_total += np.asarray(idx.count(self._shard_batch_keys(keys_to_count)), dtype=np.uint64)
 
         total[indices_to_count] = partial_total
         return total
@@ -814,6 +1075,17 @@ class ShardedIndex:
             bloom_path = self._path / BLOOM_FILENAME
             with timer("ShardedIndex save bloom filter"):
                 self._bloom.save(bloom_path)
+
+        # Save tombstones (also serves as the _needs_compact persistence flag:
+        # file exists → filtering needed on next load, even if tombstones are empty)
+        tombstone_path = self._path / TOMBSTONE_FILENAME
+        if self._tombstones or self._needs_compact:
+            with atomic_write(tombstone_path) as tmp:
+                with open(tmp, "wb") as f:
+                    arr = np.array(sorted(self._tombstones), dtype=self._key_dtype)
+                    np.save(f, arr)
+        elif tombstone_path.exists():
+            tombstone_path.unlink()
 
         if self._active_shard is None or len(self._active_shard) == 0:
             return
@@ -884,6 +1156,124 @@ class ShardedIndex:
 
         return count
 
+    def compact(self) -> int:
+        """Rebuild view shards excluding tombstoned and cross-shard duplicate entries.
+
+        Processes shards newest-to-oldest. Keys already seen in newer shards (or the
+        active shard) are dropped from older shards. Returns number of entries removed.
+
+        Two-phase approach: (1) collect data while shards are accessible, (2) release
+        all mmap references, (3) execute file operations. This prevents Windows
+        PermissionError from locked memory-mapped files.
+
+        :raises RuntimeError: If index is read-only
+        """
+        self._check_writable()
+
+        seen: set = set()
+        total_removed = 0
+
+        # Collect active shard keys into seen
+        if self._active_shard is not None and len(self._active_shard) > 0:
+            active_keys = np.asarray(self._active_shard.keys)
+            seen.update(self._tombstone_keys(active_keys))
+
+        shard_paths = self._discover_shards()
+        view_paths = shard_paths[: len(self._viewed_indexes)]
+
+        # Phase 1: Analyze shards and collect live data into memory
+        # Actions: "keep" (path), "delete" (path), "rebuild" (path, keys, vectors)
+        actions: list[tuple[str, Any]] = [("keep", p) for p in view_paths]
+
+        for i in range(len(self._viewed_indexes) - 1, -1, -1):
+            shard = self._viewed_indexes[i]
+            shard_path = view_paths[i]
+
+            all_keys = np.asarray(shard.keys)
+            if len(all_keys) == 0:  # pragma: no cover – empty shards filtered on load
+                continue
+
+            canon_keys = self._tombstone_keys(all_keys)
+
+            # Vectorize tombstone check; seen-set check remains per-element (grows per shard)
+            tombstoned = self._tombstoned_mask(all_keys)
+            live_mask = np.zeros(len(canon_keys), dtype=bool)
+            for j, k in enumerate(canon_keys):
+                if not tombstoned[j] and k not in seen:
+                    live_mask[j] = True
+
+            live_canon = [k for k, live in zip(canon_keys, live_mask) if live]
+            seen.update(live_canon)
+
+            removed = int((~live_mask).sum())
+            if removed == 0:
+                continue
+
+            total_removed += removed
+
+            if not live_mask.any():
+                actions[i] = ("delete", shard_path)
+                continue
+
+            # Read live data into memory
+            live_keys = all_keys[live_mask]
+            live_vectors = np.asarray(shard.get(self._shard_batch_keys(live_keys)))
+            actions[i] = ("rebuild", (shard_path, live_keys, live_vectors))
+
+        # Phase 2: Release ALL view shard mmap references
+        # Must call reset() on each Index to explicitly release mmap file handles
+        # (on Windows, file handles prevent unlink/replace until unmapped)
+        self._view_shards = None
+        for idx in self._viewed_indexes:
+            idx.reset()
+        self._viewed_indexes.clear()
+
+        # Phase 3: Execute file operations and rebuild view shards
+        new_viewed: list[Index] = []
+
+        for action, data in actions:
+            if action == "keep":
+                shard_path = data
+                viewed = self._restore_shard(shard_path, view=True)
+                if viewed is not None:  # pragma: no branch
+                    new_viewed.append(viewed)
+
+            elif action == "delete":
+                shard_path = data
+                shard_path.unlink(missing_ok=True)
+
+            elif action == "rebuild":  # pragma: no branch
+                shard_path, live_keys, live_vectors = data
+                new_shard = self._create_shard()
+                new_shard.add(self._shard_batch_keys(live_keys), live_vectors)
+
+                compact_path = shard_path.with_suffix(".usearch.compact")
+                new_shard.save(str(compact_path))
+                os.replace(compact_path, shard_path)
+
+                viewed = self._restore_shard(shard_path, view=True)
+                if viewed is not None:  # pragma: no branch
+                    new_viewed.append(viewed)
+
+        # Phase 4: Rebuild containers
+        self._viewed_indexes = new_viewed
+        self._view_shards = None
+        if new_viewed:
+            self._view_shards = Indexes()
+            for shard in new_viewed:
+                self._view_shards.merge(shard)
+
+        # Clear all tombstones and overlap flag
+        self._tombstones.clear()
+        self._needs_compact = False
+        self._invalidate_shard_cache()
+
+        # Rebuild bloom filter and save everything
+        self.rebuild_bloom(save=False, log_progress=False)
+        self.save()
+
+        return total_removed
+
     def _load_existing(self) -> None:
         """Load existing shards from directory.
 
@@ -892,8 +1282,8 @@ class ShardedIndex:
         """
         from loguru import logger
 
-        # Clean up stale temp files from interrupted saves
-        for pattern in ("*.usearch.tmp", "*.isbf.tmp"):
+        # Clean up stale temp files from interrupted saves/compactions
+        for pattern in ("*.usearch.tmp", "*.isbf.tmp", "*.npy.tmp", "*.usearch.compact"):
             for stale in self._path.glob(pattern):
                 logger.warning(f"Removing stale temp file: {stale.name}")
                 stale.unlink()
@@ -904,6 +1294,17 @@ class ShardedIndex:
         # Always load bloom filter if file exists to keep it in sync
         # _use_bloom only controls whether to USE it for fast rejection in lookups
         self._bloom = self._load_bloom_if_exists()
+
+        # Load tombstones if file exists. File presence also signals _needs_compact
+        # (cross-shard overlap may exist even when tombstones array is empty).
+        tombstone_path = self._path / TOMBSTONE_FILENAME
+        if tombstone_path.exists():
+            arr = np.load(str(tombstone_path))
+            self._tombstones = set(arr.tolist())
+            self._needs_compact = True
+        else:
+            self._tombstones = set()
+            self._needs_compact = False
 
         if not shard_files:
             self._active_shard = self._create_shard()
@@ -983,11 +1384,17 @@ class ShardedIndex:
 
     @property
     def size(self) -> int:
-        """Total number of vectors across all shards."""
+        """Total number of logical vectors (approximate with cross-shard duplicates).
+
+        Exact when no cross-shard duplicates exist (the common case). May slightly
+        overcount after upsert+rotation creates temporary duplicates. Compaction
+        makes it exact. Tombstones are subtracted 1:1.
+        """
         total = sum(len(idx) for idx in self._viewed_indexes)
         if self._active_shard is not None:
             total += len(self._active_shard)
-        return total
+        total -= len(self._tombstones)
+        return max(0, total)
 
     def __len__(self) -> int:
         """Total number of vectors across all shards."""
@@ -1103,19 +1510,94 @@ class ShardedIndex:
             return self._active_shard.capacity
         return 0
 
-    # === Not Supported ===
+    @property
+    def tombstone_count(self) -> int:
+        """Number of pending tombstones (view shard deletions awaiting compaction)."""
+        return len(self._tombstones)
 
-    def remove(self, *args: Any, **kwargs: Any) -> None:
-        """Not supported - append-only design."""
-        raise NotImplementedError("ShardedIndex is append-only; remove() not supported")
+    # === CRUD Operations ===
+
+    def remove(self, keys: Any, *, compact: bool = False) -> None:
+        """Remove vectors by key.
+
+        Active shard entries: USearch remove() (lazy deletion).
+        View shard entries: tombstoned (suppressed on read, cleaned on compact()).
+        Keys that exist only in the active shard are NOT tombstoned.
+
+        :param keys: Key or sequence of keys to remove
+        :param compact: If True, call USearch isolate() on active shard entries
+        :raises RuntimeError: If index is read-only
+        :raises ValueError: If multi=True
+        """
+        self._check_writable()
+        if self._config.get("multi"):
+            raise ValueError("remove() requires multi=False")
+        if self._is_single_key(keys):
+            self._remove_single(keys, compact=compact)
+        else:
+            self._remove_batch(keys, compact=compact)
+
+    def _remove_single(self, key: Any, *, compact: bool = False) -> None:
+        """Remove a single key from the index."""
+        # Bloom filter fast rejection
+        if self._use_bloom and self._bloom is not None:
+            if not self._bloom.contains(self._bloom_key(key)):
+                return
+
+        # Check active shard
+        if self._active_shard is not None and self._active_shard.contains(key):
+            self._active_shard.remove(key, compact=compact)
+
+        # Check view shards — tombstone if found in any view shard
+        for idx in reversed(self._viewed_indexes):
+            if idx.contains(key):
+                self._tombstones.add(self._tombstone_key(key))
+                return
+
+    def _remove_batch(self, keys: Any, *, compact: bool = False) -> None:
+        """Remove multiple keys from the index."""
+        keys_arr = self._normalize_batch_keys(keys)
+        if len(keys_arr) == 0:
+            return
+
+        # Bloom filter fast rejection
+        if self._use_bloom and self._bloom is not None:
+            bloom_results = self._bloom.contains_batch(self._bloom_keys(keys_arr))
+            maybe_present = np.array(bloom_results, dtype=bool)
+            if not maybe_present.any():
+                return
+            keys_to_check = keys_arr[maybe_present]
+        else:
+            keys_to_check = keys_arr
+
+        # Check active shard — remove present keys
+        if self._active_shard is not None:  # pragma: no branch – writable always has active
+            active_exists = np.asarray(self._active_shard.contains(self._shard_batch_keys(keys_to_check)), dtype=bool)
+            if active_exists.any():
+                self._active_shard.remove(self._shard_batch_keys(keys_to_check[active_exists]), compact=compact)
+
+        # Check view shards — tombstone keys found in any view shard
+        if self._viewed_indexes:
+            in_view = np.zeros(len(keys_to_check), dtype=bool)
+            for idx in reversed(self._viewed_indexes):
+                if in_view.all():
+                    break
+                remaining = ~in_view
+                in_view[remaining] |= np.asarray(
+                    idx.contains(self._shard_batch_keys(keys_to_check[remaining])), dtype=bool
+                )
+            if in_view.any():
+                self._tombstones.update(self._tombstone_keys(keys_to_check[in_view]))
 
     def __delitem__(self, keys: Any) -> None:
-        """Not supported - append-only design."""
-        raise NotImplementedError("ShardedIndex is append-only; remove() not supported")
+        """Remove vectors by key (del index[key])."""
+        self.remove(keys)
+
+    # === Not Supported ===
 
     def rename(self, *args: Any, **kwargs: Any) -> None:
-        """Not supported - append-only design."""
-        raise NotImplementedError("ShardedIndex is append-only; rename() not supported")
+        """Not supported."""
+        raise NotImplementedError("rename() not supported for ShardedIndex")
 
     def join(self, *args: Any, **kwargs: Any) -> None:
         """Not supported for sharded indexes."""
@@ -1140,8 +1622,8 @@ class ShardedIndex:
     def reset(self) -> None:
         """Release all resources and reset to empty-but-usable state.
 
-        Releases view shards, active shard, and bloom filter memory. Does not
-        delete files on disk. After reset, the index is empty and ready for
+        Releases view shards, active shard, bloom filter, and tombstones in memory.
+        Does not delete files on disk. After reset, the index is empty and ready for
         new add() calls with the same configuration.
 
         :raises RuntimeError: If index is read-only
@@ -1158,6 +1640,10 @@ class ShardedIndex:
         # Clear bloom filter (reset to initial state, not destroyed)
         if self._bloom is not None:
             self._bloom.clear()
+
+        # Clear tombstones and overlap flag in memory (does not delete files on disk)
+        self._tombstones.clear()
+        self._needs_compact = False
 
         # Reset amortized size check
         self._adds_until_size_check = 0
@@ -1305,8 +1791,7 @@ class ShardedIndex:
         """
         if self._active_shard_path is not None:
             return self._active_shard_path
-        existing = self._discover_shards()
-        return self._get_shard_path(len(existing))
+        return self._get_shard_path(self._get_next_shard_number())
 
     def _schedule_next_size_check(self, current_size: int) -> None:
         """Estimate how many adds until shard reaches size limit.
@@ -1336,8 +1821,7 @@ class ShardedIndex:
         if self._active_shard_path is not None:
             shard_path = self._active_shard_path
         else:
-            existing_shards = self._discover_shards()
-            shard_path = self._get_shard_path(len(existing_shards))
+            shard_path = self._get_shard_path(self._get_next_shard_number())
 
         # Save current active shard
         with timer(f"ShardedIndex rotate save {shard_path.name}"):
@@ -1492,6 +1976,118 @@ class ShardedIndex:
                 computed_distances=batch.computed_distances,
             )
 
+    def _truncate_results(
+        self,
+        result: Matches | BatchMatches,
+        count: int,
+        is_single: bool,
+    ) -> Matches | BatchMatches:
+        """Truncate results to at most `count` entries."""
+        if is_single:
+            matches = cast(Matches, result)
+            if len(matches.keys) <= count:
+                return matches
+            return Matches(
+                keys=matches.keys[:count],
+                distances=matches.distances[:count],
+                visited_members=matches.visited_members,
+                computed_distances=matches.computed_distances,
+            )
+        else:
+            batch = cast(BatchMatches, result)
+            if batch.keys.shape[1] <= count:  # pragma: no cover – batch shape always equals oversampled count
+                return batch
+            return BatchMatches(
+                keys=batch.keys[:, :count].copy(),
+                distances=batch.distances[:, :count].copy(),
+                counts=np.minimum(batch.counts, count),
+                visited_members=batch.visited_members,
+                computed_distances=batch.computed_distances,
+            )
+
+    def _oversampled_count(self, count: int) -> int:
+        """Compute oversampled result count for view shard search.
+
+        Uses tombstone/active-shard density to estimate extra results needed.
+        Active shard count only included when cross-shard overlap exists (_needs_compact).
+        Falls back to 2x when no view shards exist.
+        """
+        total = sum(len(idx) for idx in self._viewed_indexes)
+        active_count = len(self._active_shard) if self._needs_compact and self._active_shard is not None else 0
+        filtered = len(self._tombstones) + active_count
+        if total > 0 and filtered > 0:
+            live_ratio = max((total - filtered) / total, 0.1)
+            return int(count / live_ratio) + 1
+        return count * 2
+
+    def _filter_single_view_results(self, matches: Matches) -> Matches | None:
+        """Filter single-query view results: remove tombstoned + active-shard keys."""
+        keys = matches.keys
+        if len(keys) == 0:  # pragma: no cover – view search always returns results
+            return None
+
+        exclude = np.zeros(len(keys), dtype=bool)
+
+        # Exclude tombstoned keys
+        if self._tombstones:
+            exclude |= self._tombstoned_mask(keys)
+
+        # Exclude keys present in active shard (only needed when cross-shard overlap exists)
+        if self._needs_compact and self._active_shard is not None and len(self._active_shard) > 0:
+            exclude |= np.asarray(self._active_shard.contains(self._shard_batch_keys(keys)), dtype=bool)
+
+        keep = ~exclude
+        if not keep.any():
+            return None
+
+        return Matches(
+            keys=keys[keep],
+            distances=matches.distances[keep],
+            visited_members=matches.visited_members,
+            computed_distances=matches.computed_distances,
+        )
+
+    def _filter_batch_view_results(self, batch: BatchMatches) -> BatchMatches | None:
+        """Filter batch view results: remove tombstoned + active-shard keys."""
+        keys_2d = batch.keys
+        dist_2d = batch.distances
+
+        exclude = np.zeros_like(keys_2d, dtype=bool)
+
+        # Exclude tombstoned keys
+        if self._tombstones:
+            flat_tombstoned = self._tombstoned_mask(keys_2d.ravel())
+            exclude |= flat_tombstoned.reshape(keys_2d.shape)
+
+        # Exclude keys present in active shard (only needed when cross-shard overlap exists)
+        if self._needs_compact and self._active_shard is not None and len(self._active_shard) > 0:
+            flat_keys = keys_2d.ravel()
+            flat_in_active = np.asarray(self._active_shard.contains(self._shard_batch_keys(flat_keys)), dtype=bool)
+            exclude |= flat_in_active.reshape(keys_2d.shape)
+
+        # Shift valid results to the front of each row (no gaps)
+        keep = ~exclude
+        counts = keep.sum(axis=1).astype(np.int64)
+        result_keys = np.zeros_like(keys_2d)
+        result_distances = np.full_like(dist_2d, np.inf)
+
+        for i in range(len(keys_2d)):
+            if counts[i] > 0:
+                row_keep = keep[i]
+                result_keys[i, : counts[i]] = keys_2d[i, row_keep]
+                result_distances[i, : counts[i]] = dist_2d[i, row_keep]
+
+        if counts.sum() == 0:  # pragma: no cover – depends on search backend padding
+            return None
+
+        return BatchMatches(
+            keys=result_keys,
+            distances=result_distances,
+            counts=counts,
+            visited_members=batch.visited_members,
+            computed_distances=batch.computed_distances,
+        )
+
     def __repr__(self) -> str:
         """Return string representation of the sharded index."""
         ro = ", read_only" if self._read_only else ""
@@ -1513,6 +2109,8 @@ class _UuidKeyMixin:
     # Attributes/methods provided by ShardedIndex at runtime (declared for type checking)
     _viewed_indexes: list[Index]
     _merge_search_results: Callable[..., Matches | BatchMatches]
+    _tombstones: set
+    _tombstone_key: Callable[..., Any]
 
     # --- Key handling hook overrides ---
 
@@ -1550,6 +2148,12 @@ class _UuidKeyMixin:
     def _key_dtype(self) -> np.dtype:
         """NumPy dtype for 128-bit keys."""
         return UUID_DTYPE
+
+    def _tombstoned_mask(self, keys_arr: NDArray) -> NDArray[np.bool_]:
+        """Return boolean mask where True = key is tombstoned. Per-element for V16 keys."""
+        if not self._tombstones:
+            return np.zeros(len(keys_arr), dtype=bool)
+        return np.array([self._tombstone_key(k) in self._tombstones for k in keys_arr], dtype=bool)
 
     # --- Validation on write path ---
 
@@ -1592,6 +2196,38 @@ class _UuidKeyMixin:
         else:
             keys = self._normalize_batch_keys(keys)
         return super().add_once(keys, vectors, **kwargs)  # type: ignore[misc]
+
+    def remove(self, keys: Any, **kwargs: Any) -> None:
+        """Remove vectors with 128-bit key validation.
+
+        :param keys: bytes(16) key, V16 ndarray batch, or iterable of bytes(16)
+        :raises ValueError: If key is wrong type or wrong length
+        """
+        if isinstance(keys, bytes):
+            if len(keys) != 16:
+                raise ValueError(f"UUID key must be exactly 16 bytes, got {len(keys)}")
+        elif not isinstance(keys, np.ndarray):
+            keys = self._normalize_batch_keys(keys)
+        return super().remove(keys, **kwargs)  # type: ignore[misc]
+
+    def upsert(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> Any:
+        """Upsert vectors with 128-bit key validation.
+
+        :param keys: bytes(16) key, V16 ndarray batch, or iterable of bytes(16)
+        :param vectors: Vector or batch of vectors to store
+        :raises ValueError: If keys is None, wrong type, or wrong length
+        """
+        if keys is None:
+            raise ValueError("Auto-key generation not supported for 128-bit keys")
+        if isinstance(keys, bytes):
+            if len(keys) != 16:
+                raise ValueError(f"UUID key must be exactly 16 bytes, got {len(keys)}")
+        elif isinstance(keys, np.ndarray):
+            if keys.dtype != UUID_DTYPE:
+                raise ValueError(f"Batch keys must have dtype 'V16', got {keys.dtype}")
+        else:
+            keys = self._normalize_batch_keys(keys)
+        return super().upsert(keys, vectors, **kwargs)  # type: ignore[misc]
 
     # --- Validation on read paths ---
 

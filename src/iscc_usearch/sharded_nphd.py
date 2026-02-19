@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import os
 from pathlib import Path
 from typing import Any, Callable
@@ -13,6 +14,8 @@ from usearch.index import BatchMatches, Index, Matches
 from iscc_usearch.metrics import create_nphd_metric
 from iscc_usearch.nphd import pad_vectors, unpad_vectors
 from iscc_usearch.sharded import ShardedIndex, _UuidKeyMixin
+
+_SENTINEL = object()
 
 __all__ = ["ShardedNphdIndex", "ShardedNphdIndex128", "ShardedNphdIndexedVectors"]
 
@@ -38,36 +41,64 @@ class ShardedNphdIndexedVectors:
         """Return total number of vectors across all shards."""
         return len(self._index)
 
+    def _needs_filtering(self) -> bool:
+        """Check if iteration needs tombstone/dedup filtering."""
+        return bool(self._index._tombstones) or self._index._needs_compact
+
     def __iter__(self):
         """Yield unpadded vectors from all shards lazily.
 
-        Iterates through view shards first, then active shard.
+        Without cross-shard overlap: view shards then active shard (no dedup needed).
+        With overlap: active shard first, then view shards newest-to-oldest
+        with tombstoned and duplicate keys' vectors excluded.
         """
-        for idx in self._index._viewed_indexes:
-            for vec in idx.vectors:
-                yield unpad_vectors(vec.reshape(1, -1))[0]
+        tombstones = self._index._tombstones
+
+        # Fast path: no cross-shard overlap — keys are unique across shards
+        if not tombstones and not self._index._needs_compact:
+            for idx in self._index._viewed_indexes:
+                for vec in idx.vectors:
+                    yield unpad_vectors(vec.reshape(1, -1))[0]
+            if self._index._active_shard is not None:
+                for vec in self._index._active_shard.vectors:
+                    yield unpad_vectors(vec.reshape(1, -1))[0]
+            return
+
+        seen: set = set()
+
+        # Active shard first
         if self._index._active_shard is not None:
-            for vec in self._index._active_shard.vectors:
+            for key, vec in zip(self._index._active_shard.keys, self._index._active_shard.vectors):
+                seen.add(self._index._tombstone_key(key))
                 yield unpad_vectors(vec.reshape(1, -1))[0]
+
+        # View shards newest-to-oldest
+        for idx in reversed(self._index._viewed_indexes):
+            for key, vec in zip(idx.keys, idx.vectors):
+                canon = self._index._tombstone_key(key)
+                if canon not in tombstones and canon not in seen:
+                    seen.add(canon)
+                    yield unpad_vectors(vec.reshape(1, -1))[0]
 
     def __getitem__(self, index: int | slice) -> NDArray[np.uint8] | list[NDArray[np.uint8]]:
         """Support indexing and slicing.
+
+        Warning: Slices with active tombstones materialize all vectors into
+        memory. Avoid on larger-than-RAM indexes.
 
         :param index: Integer index or slice
         :return: Single unpadded vector or list of unpadded vectors
         """
         if isinstance(index, slice):
-            # Handle slicing by materializing the requested range
             vectors = list(self)
             return vectors[index]
-        else:
-            # Handle single index
+
+        # Fast path: no filtering needed - len() is exact
+        if not self._needs_filtering():
             if index < 0:
                 index = len(self) + index
             if index < 0 or index >= len(self):
                 raise IndexError("index out of range")
-
-            # Iterate through shards to find the vector at the given index
             current = 0
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
@@ -75,12 +106,22 @@ class ShardedNphdIndexedVectors:
                     vec = idx.vectors[index - current]
                     return unpad_vectors(vec.reshape(1, -1))[0]
                 current += shard_len
-
             if self._index._active_shard is not None:
                 vec = self._index._active_shard.vectors[index - current]
                 return unpad_vectors(vec.reshape(1, -1))[0]
-
             raise IndexError("index out of range")  # pragma: no cover
+
+        # Slow path: dedup/tombstone filtering - len() may overcount
+        if index < 0:
+            # Two-pass: count exact items first, then islice (avoids full materialization)
+            actual_len = sum(1 for _ in self)
+            index = actual_len + index
+            if index < 0:
+                raise IndexError("index out of range")
+        result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
+        if result is _SENTINEL:
+            raise IndexError("index out of range")
+        return result
 
     def __array__(self, dtype: np.typing.DTypeLike = None) -> NDArray[np.uint8]:
         """Support numpy array conversion for uniform-length vectors only.
@@ -263,6 +304,50 @@ class ShardedNphdIndex(ShardedIndex):
 
         # Call parent add with padded vectors
         return super().add(keys, padded, copy=copy, threads=threads, log=log, progress=progress)
+
+    def upsert(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> int | NDArray:
+        """Insert or update variable-length vectors by key.
+
+        Handles ragged/mixed-length vectors that np.asarray cannot stack.
+
+        :param keys: Key(s) — None not accepted
+        :param vectors: Single vector or batch of variable-length vectors
+        :return: Key(s) for stored vectors
+        :raises ValueError: If keys is None or multi=True
+        :raises RuntimeError: If index is read-only
+        """
+        self._check_writable()
+        if keys is None:
+            raise ValueError("upsert() requires explicit keys")
+        if self._config.get("multi"):
+            raise ValueError("upsert() requires multi=False")
+        if self._is_single_key(keys):
+            self.remove(keys)
+            return self.add(keys, vectors, **kwargs)
+
+        # Batch path — handle variable-length vectors without np.asarray
+        keys_arr = self._normalize_batch_keys(keys)
+        if hasattr(vectors, "ndim") and vectors.ndim == 1:
+            vectors = [vectors]
+        if isinstance(vectors, np.ndarray) and vectors.ndim == 2:
+            vectors_seq = vectors
+        else:
+            vectors_seq = list(vectors)
+        if len(keys_arr) != len(vectors_seq):
+            raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_seq)})")
+        # Reverse-unique: flip, unique, flip back — keeps last occurrence
+        _, unique_idx = np.unique(keys_arr[::-1], return_index=True)
+        unique_idx = len(keys_arr) - 1 - unique_idx
+        unique_idx.sort()
+        if len(unique_idx) < len(keys_arr):
+            keys_arr = keys_arr[unique_idx]
+            if isinstance(vectors_seq, np.ndarray):
+                vectors_seq = vectors_seq[unique_idx]
+            else:
+                vectors_seq = [vectors_seq[i] for i in unique_idx]
+
+        self.remove(keys_arr)
+        return self.add(keys_arr, vectors_seq, **kwargs)
 
     def add_once(
         self,

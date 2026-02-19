@@ -1,9 +1,7 @@
 """
 Test ShardedIndex unsupported operations.
 
-Confirms that append-only and unsupported operations raise NotImplementedError:
-- remove
-- __delitem__
+Confirms that unsupported operations raise NotImplementedError:
 - rename
 - join
 - cluster
@@ -17,27 +15,11 @@ import pytest
 from iscc_usearch.sharded import ShardedIndex
 
 
-def test_remove_not_supported(tmp_path):
-    """Test remove raises NotImplementedError."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-
-    with pytest.raises(NotImplementedError, match="append-only"):
-        index.remove(1)
-
-
-def test_delitem_not_supported(tmp_path):
-    """Test __delitem__ raises NotImplementedError."""
-    index = ShardedIndex(ndim=64, path=tmp_path)
-
-    with pytest.raises(NotImplementedError, match="append-only"):
-        del index[1]
-
-
 def test_rename_not_supported(tmp_path):
     """Test rename raises NotImplementedError."""
     index = ShardedIndex(ndim=64, path=tmp_path)
 
-    with pytest.raises(NotImplementedError, match="append-only"):
+    with pytest.raises(NotImplementedError, match="not supported"):
         index.rename(1, 2)
 
 
