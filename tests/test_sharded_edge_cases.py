@@ -245,17 +245,29 @@ def test_property_capacity_without_active_shard(tmp_path):
 
 def test_property_metric_kind_with_custom_metric(tmp_path):
     # type: () -> None
-    """Test metric_kind property with custom CompiledMetric."""
-    from iscc_usearch.metrics import create_nphd_metric
+    """Test metric_kind property with MetricKind.NPHD."""
+    from usearch.index import MetricKind
 
-    # Create index with custom compiled metric
-    custom_metric = create_nphd_metric()
-    index = ShardedIndex(ndim=64, path=tmp_path, metric=custom_metric)
+    # Create index with NPHD metric
+    index = ShardedIndex(ndim=64, path=tmp_path, metric=MetricKind.NPHD)
     index._active_shard = None
 
-    # Should access metric.kind attribute for custom metrics
+    # Should report NPHD metric kind
     result = index.metric_kind
-    assert result is not None
+    assert result == MetricKind.NPHD
+
+
+def test_property_metric_kind_with_compiled_metric(tmp_path):
+    # type: () -> None
+    """Test metric_kind property with CompiledMetric."""
+    from usearch.index import CompiledMetric, MetricKind, MetricSignature
+
+    compiled = CompiledMetric(pointer=0, kind=MetricKind.Hamming, signature=MetricSignature.ArrayArray)
+    index = ShardedIndex(ndim=64, path=tmp_path, metric=compiled)
+    index._active_shard = None
+
+    result = index.metric_kind
+    assert result == MetricKind.Hamming
 
 
 def test_load_existing_empty_shards_with_bloom_enabled(tmp_path):

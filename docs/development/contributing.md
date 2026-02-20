@@ -112,6 +112,8 @@ Each patch is maintained on a separate branch to facilitate upstream merging:
     Accept `copy` keyword in `IndexedKeys.__array__` for NumPy 2.0
 - [`python-128bit-keys`](https://github.com/iscc/usearch/compare/unum-cloud:main...python-128bit-keys) —
     Add 128-bit (UUID) key support to `Index` and `Indexes` via `key_kind="uuid"`
+- [`add-nphd-metric`](https://github.com/iscc/usearch/compare/unum-cloud:main...add-nphd-metric) —
+    Native `MetricKind.NPHD` for Normalized Prefix Hamming Distance
 
 See the [Performance explanation](../explanation/performance.md) for details on the performance
 patches.

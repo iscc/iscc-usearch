@@ -37,10 +37,9 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "numba>=0.62.1",
     "loguru>=0.7.3",
     "fastbloom-rs>=0.5.10",
-    "usearch-iscc>=2.23.6",
+    "usearch-iscc>=2.23.6",  # >=2.23.6 required for native MetricKind.NPHD
 ]
 
 [project.urls]
@@ -97,11 +96,12 @@ exclude_lines = [
 include = ["src/iscc_usearch"]
 
 [tool.ty.rules]
-# Downgrade errors caused by usearch's incomplete type annotations
+# Downgrade errors caused by usearch's and numpy's incomplete type annotations
 invalid-argument-type = "warn"
 invalid-method-override = "warn"
 invalid-return-type = "warn"
 invalid-assignment = "warn"
+invalid-parameter-default = "warn"
 no-matching-overload = "warn"
 possibly-missing-attribute = "warn"
 

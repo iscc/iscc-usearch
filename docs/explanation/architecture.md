@@ -1,6 +1,6 @@
 ---
 icon: lucide/blocks
-description: Core design of iscc-usearch including length-prefixed padding, custom metric restoration, Numba compilation, and the six-class index hierarchy.
+description: Core design of iscc-usearch including length-prefixed padding, native NPHD metric, and the six-class index hierarchy.
 ---
 
 # Architecture
@@ -9,7 +9,7 @@ description: Core design of iscc-usearch including length-prefixed padding, cust
 
 USearch requires all vectors in an index to have the same dimensionality. ISCC codes are
 variable-length (64-bit to 256-bit). `iscc-usearch` solves this with **length-prefixed padding**
-and a **custom metric** that ignores padding during distance computation.
+and the **native NPHD metric** that ignores padding during distance computation.
 
 ## Length-prefixed padding
 
@@ -23,35 +23,15 @@ The padded vector is stored in USearch as a `ScalarKind.B1` (binary) vector with
 
 On retrieval, `unpad_vectors` reads the length byte and returns only the valid data bytes.
 
-Both `pad_vectors` and `unpad_vectors` are compiled with Numba `@njit(cache=True)` for native speed.
-
-## Custom metric restoration
-
-USearch serializes the metric *kind* (e.g., Hamming) but not the custom function pointer. When an
-index is loaded or viewed, USearch substitutes the standard metric for that kind. Since NPHD is
-registered as `MetricKind.Hamming` (the closest built-in kind), a loaded index would use standard
-Hamming distance instead of NPHD.
-
-`NphdIndex.load()` and `NphdIndex.view()` call `change_metric()` after every load or view to
-restore the NPHD function pointer. This happens automatically and callers never need to do it
-manually.
-
-## Numba compilation strategy
-
-Two compilation modes are used:
-
-- **`@cfunc`** for the NPHD metric: produces a C-callable function pointer compatible with
-    USearch's `CompiledMetric` interface. USearch calls it from C++ during graph traversal without
-    crossing the Python/C boundary.
-
-- **`@njit(cache=True)`** for padding functions: JIT-compiled with result caching so recompilation
-    cost is paid only once per environment. Operates on NumPy arrays.
+Both `pad_vectors` and `unpad_vectors` are plain Python/NumPy functions. `pad_vectors` uses
+vectorized array slicing for 2D ndarray input (uniform-length vectors) and a Python loop for
+list-of-arrays input (variable-length vectors).
 
 ## Maximum vector size
 
-The NPHD metric is compiled with a fixed buffer size of 33 bytes (1 length byte + 32 data bytes),
-so `max_dim` is capped at **256 bits**. This matches the maximum resolution of ISCC content
-fingerprints. `NphdIndex` validates this at construction time.
+The NPHD metric supports vectors up to 33 bytes (1 length byte + 32 data bytes), so `max_dim` is
+capped at **256 bits**. This matches the maximum resolution of ISCC content fingerprints.
+`NphdIndex` validates this at construction time.
 
 ## Index class hierarchy
 
@@ -142,9 +122,10 @@ are safe because completed view shards are immutable, but concurrent writes must
 
 ## Why a thin wrapper
 
-`iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class, adds
-padding at the boundary, and restores the metric after persistence operations. This keeps the
-wrapper small and lets it track upstream USearch improvements without merge conflicts.
+`iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class and adds
+padding at the boundary. The NPHD metric is provided natively by usearch-iscc as
+`MetricKind.NPHD`, so no metric restoration is needed after persistence operations. This keeps
+the wrapper small and lets it track upstream USearch improvements without merge conflicts.
 
 The one exception is the [patched usearch fork](performance.md), which modifies USearch's C++ core
 for performance. Those patches are confined to view/load paths and don't change the index format.

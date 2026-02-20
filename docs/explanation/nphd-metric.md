@@ -109,6 +109,6 @@ that are comparable across resolutions.
 
 ## Implementation
 
-The NPHD metric is compiled to a C-callable function with Numba's `@cfunc` decorator and passed to
-USearch's C++ core as a function pointer. This avoids Python callback overhead on every distance
-computation during graph traversal. See `iscc_usearch.metrics` for the source.
+The NPHD metric is provided natively by the usearch-iscc fork as `MetricKind.NPHD`. It is
+implemented in C++ within usearch's core, so distance computations run at native speed without
+crossing the Python/C boundary.

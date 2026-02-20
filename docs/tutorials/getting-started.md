@@ -35,14 +35,13 @@ print(iscc_usearch.__version__)
 
 ### What gets installed
 
-`iscc-usearch` brings in four runtime dependencies:
+`iscc-usearch` brings in three runtime dependencies:
 
-| Dependency                                               | Purpose                                                                            |
-| -------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) | Patched USearch fork with fast `view()` and GIL release for parallel shard loading |
-| [`numba`](https://numba.pydata.org/)                     | JIT compilation for the NPHD metric and vector padding functions                   |
-| [`fastbloom-rs`](https://pypi.org/project/fastbloom-rs/) | Rust-based bloom filter for O(1) key rejection in sharded indexes                  |
-| [`loguru`](https://loguru.readthedocs.io/)               | Structured logging                                                                 |
+| Dependency                                               | Purpose                                                                                                 |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| [`usearch-iscc`](https://pypi.org/project/usearch-iscc/) | Patched USearch fork with native NPHD metric, fast `view()`, and GIL release for parallel shard loading |
+| [`fastbloom-rs`](https://pypi.org/project/fastbloom-rs/) | Rust-based bloom filter for O(1) key rejection in sharded indexes                                       |
+| [`loguru`](https://loguru.readthedocs.io/)               | Structured logging                                                                                      |
 
 ## Create an index
 

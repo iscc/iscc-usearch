@@ -1,6 +1,6 @@
 ---
 icon: lucide/gauge
-description: Benchmarks and optimizations for iscc-usearch including patched USearch fork improvements, Numba JIT compilation, bloom filters, and shard tuning guidance.
+description: Benchmarks and optimizations for iscc-usearch including patched USearch fork improvements, native NPHD metric, bloom filters, and shard tuning guidance.
 ---
 
 # Performance
@@ -156,12 +156,10 @@ or rotated. This avoids repeated directory scans on every operation.
 are yielded shard-by-shard without loading everything into memory, so you can iterate over 100M+
 vectors without proportional RAM usage.
 
-### Numba JIT compilation
+### Native NPHD metric
 
-- **`@cfunc` metric:** The NPHD metric is compiled to a C-callable function pointer passed
-    directly to USearch's C++ core, bypassing Python callback overhead on every distance computation.
-- **`@njit(cache=True)` padding:** `pad_vectors` and `unpad_vectors` are compiled with result
-    caching, so the compilation cost is paid only once.
+The NPHD metric is implemented in C++ within the usearch-iscc fork (`MetricKind.NPHD`). Distance
+computations run at native speed without crossing the Python/C boundary.
 
 ### Fast-path key lookups
 

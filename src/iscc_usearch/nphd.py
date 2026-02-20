@@ -6,13 +6,10 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any, Union  # noqa: F401 - used in type comments
 
 import numpy as np
-from numba import njit
 from numpy.typing import NDArray
-from usearch.index import BatchMatches, Matches, ScalarKind  # noqa: F401 - used in type comments
+from usearch.index import BatchMatches, Matches, MetricKind, ScalarKind  # noqa: F401 - used in type comments
 
 from iscc_usearch.index import Index
-
-from iscc_usearch.metrics import create_nphd_metric
 
 # Type aliases for cleaner type comments
 Key = int | None
@@ -21,8 +18,7 @@ Vector = NDArray[np.uint8]
 Vectors = Sequence[NDArray[np.uint8]] | NDArray[np.uint8]
 
 
-@njit(cache=True)
-def pad_vectors(vectors, nbytes):  # pragma: no cover
+def pad_vectors(vectors, nbytes):
     # type: (Vectors, int) -> NDArray[np.uint8]
     """
     Add length prefix and padding to a batch of variable-length bit-vectors.
@@ -34,19 +30,25 @@ def pad_vectors(vectors, nbytes):  # pragma: no cover
     :param nbytes: Maximum number of bytes per vector (excluding length prefix byte).
     :return: 2D array of shape (batch_size, nbytes + 1) with length-prefixed padded vectors.
     """
+    if isinstance(vectors, np.ndarray) and vectors.ndim == 2:
+        batch_size, vec_len = vectors.shape
+        length = min(vec_len, nbytes)
+        padded = np.zeros((batch_size, nbytes + 1), dtype=np.uint8)
+        padded[:, 0] = vec_len
+        padded[:, 1 : length + 1] = vectors[:, :length]
+        return padded
+
     batch_size = len(vectors)
     padded = np.zeros((batch_size, nbytes + 1), dtype=np.uint8)
     for i in range(batch_size):
         vec = vectors[i]
-        length = len(vec)
-        padded[i, 0] = length
-        for j in range(min(length, nbytes)):
-            padded[i, j + 1] = vec[j]
+        length = min(len(vec), nbytes)
+        padded[i, 0] = len(vec)
+        padded[i, 1 : length + 1] = vec[:length]
     return padded
 
 
-@njit(cache=True)
-def unpad_vectors(padded):  # pragma: no cover
+def unpad_vectors(padded):
     # type: (NDArray[np.uint8]) -> list[Vector]
     """
     Extract variable-length bit-vectors from length-prefixed padded matrix.
@@ -98,11 +100,9 @@ class NphdIndex(Index):
         if "dtype" in kwargs:
             raise TypeError("`dtype` is set automatically (ScalarKind.B1)")
 
-        metric = create_nphd_metric()
-
         super().__init__(
             ndim=max_dim + 8,  # + 8 bits for length signal byte
-            metric=metric,
+            metric=MetricKind.NPHD,
             dtype=ScalarKind.B1,
             **kwargs,
         )
@@ -178,9 +178,6 @@ class NphdIndex(Index):
         """
         Load index from file or buffer and restore max_dim from saved ndim.
 
-        CRITICAL: After loading, we must restore the custom NPHD metric because
-        usearch's load() overwrites it with the saved metric (standard Hamming).
-
         :param path_or_buffer: Path or buffer to load from (defaults to self.path)
         :param progress: Optional progress callback
         """
@@ -188,17 +185,10 @@ class NphdIndex(Index):
         self.max_dim = self.ndim - 8
         self.max_bytes = self.max_dim // 8
 
-        # Restore custom NPHD metric (usearch load() replaces it with standard Hamming)
-        metric = create_nphd_metric()
-        self._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
-
     def view(self, path_or_buffer=None, progress=None):
         # type: (Any, Any) -> None
         """
         Memory-map index from file or buffer and restore max_dim from saved ndim.
-
-        CRITICAL: After viewing, we must restore the custom NPHD metric because
-        usearch's view() overwrites it with the saved metric (standard Hamming).
 
         :param path_or_buffer: Path or buffer to view from (defaults to self.path)
         :param progress: Optional progress callback
@@ -206,10 +196,6 @@ class NphdIndex(Index):
         super().view(path_or_buffer, progress)
         self.max_dim = self.ndim - 8
         self.max_bytes = self.max_dim // 8
-
-        # Restore custom NPHD metric (usearch view() replaces it with standard Hamming)
-        metric = create_nphd_metric()
-        self._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
 
     def copy(self):
         # type: () -> NphdIndex

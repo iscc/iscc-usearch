@@ -84,9 +84,7 @@ The copy is independent. Modifying one does not affect the other.
 | `restore()` | Either    | Either        | Either   | Convenience dispatcher         |
 | `copy()`    | High      | Instant       | Yes      | Fork an index for experiments  |
 
-## Metric restoration
+## Metric persistence
 
-`NphdIndex` automatically restores the custom NPHD metric after loading or viewing an index.
-USearch's native `load()` and `view()` replace the compiled metric with standard Hamming, so
-`NphdIndex` calls `change_metric()` after every load or view operation. This is handled for you
--- no extra steps required.
+The native `MetricKind.NPHD` metric is correctly serialized and deserialized by usearch-iscc.
+No manual metric restoration is needed after `load()` or `view()` operations.

@@ -11,7 +11,8 @@ import numpy as np
 from numpy.typing import NDArray
 from usearch.index import BatchMatches, Index, Matches
 
-from iscc_usearch.metrics import create_nphd_metric
+from usearch.index import MetricKind
+
 from iscc_usearch.nphd import pad_vectors, unpad_vectors
 from iscc_usearch.sharded import ShardedIndex, _UuidKeyMixin
 
@@ -195,7 +196,7 @@ class ShardedNphdIndex(ShardedIndex):
 
         super().__init__(
             ndim=resolved_max_dim + 8,  # +8 bits for length signal byte
-            metric=create_nphd_metric(),
+            metric=MetricKind.NPHD,
             dtype="b1",  # ScalarKind.B1
             path=path,
             **kwargs,
@@ -237,7 +238,7 @@ class ShardedNphdIndex(ShardedIndex):
         """
         return Index(
             ndim=self._max_dim + 8,
-            metric=create_nphd_metric(),
+            metric=MetricKind.NPHD,
             dtype="b1",
             connectivity=self._config.get("connectivity"),
             expansion_add=self._config.get("expansion_add"),
@@ -245,22 +246,19 @@ class ShardedNphdIndex(ShardedIndex):
         )
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore an Index shard from disk and restore NPHD metric."""
+        """Restore an Index shard from disk."""
         meta = Index.metadata(str(path))
         if meta is None:  # pragma: no cover - shard files are always valid in practice
             return None
         shard = Index(
             ndim=meta["dimensions"],
-            metric=create_nphd_metric(),
+            metric=MetricKind.NPHD,
             dtype=meta["kind_scalar"],
         )
         if view:
             shard.view(str(path))
         else:
             shard.load(str(path))
-        # Restore custom NPHD metric (usearch load/view replaces it with standard Hamming)
-        metric = create_nphd_metric()
-        shard._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
         return shard
 
     @property
@@ -541,7 +539,7 @@ class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
         """Create a uuid-keyed NPHD shard."""
         return Index(
             ndim=self._max_dim + 8,
-            metric=create_nphd_metric(),
+            metric=MetricKind.NPHD,
             dtype="b1",
             connectivity=self._config.get("connectivity"),
             expansion_add=self._config.get("expansion_add"),
@@ -556,7 +554,7 @@ class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
             return None
         shard = Index(
             ndim=meta["dimensions"],
-            metric=create_nphd_metric(),
+            metric=MetricKind.NPHD,
             dtype=meta["kind_scalar"],
             key_kind="uuid",
         )
@@ -564,9 +562,6 @@ class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
             shard.view(str(path))
         else:
             shard.load(str(path))
-        # Restore custom NPHD metric (usearch load/view replaces it with standard Hamming)
-        metric = create_nphd_metric()
-        shard._compiled.change_metric(metric.kind, metric.signature, metric.pointer)
         return shard
 
     def __repr__(self) -> str:
