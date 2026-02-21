@@ -52,6 +52,7 @@ class CorruptedShardError(Exception):
             msg += f" ({reason})"
         super().__init__(msg)
 
+
 # Default bloom filter file name
 BLOOM_FILENAME = "bloom.isbf"
 
@@ -1381,8 +1382,7 @@ class ShardedIndex:
 
         if corrupted_paths:
             logger.warning(
-                f"ShardedIndex: {len(corrupted_paths)} corrupted shard(s) skipped: "
-                f"{[str(p) for p in corrupted_paths]}"
+                f"ShardedIndex: {len(corrupted_paths)} corrupted shard(s) skipped: {[str(p) for p in corrupted_paths]}"
             )
 
         # Determine last valid shard for config update

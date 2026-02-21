@@ -6,7 +6,6 @@ instead of crashing the process. Corrupted shards should be skipped with warning
 and the index should remain operational with whatever valid shards remain.
 """
 
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -457,8 +456,6 @@ class TestLoadViewExceptionPaths:
         idx.save()
 
         # Patch Index.load to raise after metadata succeeds
-        original_load = Index.load
-
         def failing_load(self, *args, **kwargs):
             raise RuntimeError("simulated HNSW graph corruption")
 
@@ -472,8 +469,6 @@ class TestLoadViewExceptionPaths:
         vectors = np.random.rand(5, 64).astype(np.float32)
         idx.add(list(range(5)), vectors)
         idx.save()
-
-        original_view = Index.view
 
         def failing_view(self, *args, **kwargs):
             raise RuntimeError("simulated mmap corruption")
