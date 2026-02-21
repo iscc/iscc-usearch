@@ -1093,15 +1093,21 @@ class ShardedIndex:
         elif tombstone_path.exists():
             tombstone_path.unlink()
 
-        if self._active_shard is not None and len(self._active_shard) > 0:
-            shard_path = self._get_active_shard_path()
-            with timer(f"ShardedIndex save {shard_path.name}"):
-                with atomic_write(shard_path) as tmp:
-                    self._active_shard.save(str(tmp), progress=progress)
-            self._active_shard_path = shard_path
-            # Invalidate cache since new shard file may have been created
-            self._invalidate_shard_cache()
+        if self._active_shard is None or len(self._active_shard) == 0:
+            self._dirty = 0
+            return
 
+        shard_path = self._get_active_shard_path()
+        with timer(f"ShardedIndex save {shard_path.name}"):
+            with atomic_write(shard_path) as tmp:
+                self._active_shard.save(str(tmp), progress=progress)
+        self._active_shard_path = shard_path
+        # Invalidate cache since new shard file may have been created
+        self._invalidate_shard_cache()
+        from loguru import logger
+
+        num_shards = len(self._discover_shards())
+        logger.info(f"Saved {num_shards} shard(s) to {self._path}")
         self._dirty = 0
 
     def rebuild_bloom(self, save: bool = True, log_progress: bool = True) -> int:
@@ -1146,7 +1152,7 @@ class ShardedIndex:
             count += shard_count
 
             if log_progress:
-                logger.info(
+                logger.debug(
                     f"  Shard {i + 1}/{num_shards}: +{shard_count:,} keys "
                     f"(total: {count:,}, filters: {self._bloom.filter_count})"
                 )
@@ -1322,7 +1328,7 @@ class ShardedIndex:
             return  # pragma: no cover - defensive path for corruption recovery
 
         mode = "view" if self._read_only else "load"
-        with timer(f"ShardedIndex {mode} {len(shard_files)} shards from {self._path}", log_start=True):
+        with timer(f"ShardedIndex {mode} {len(shard_files)} shards from {self._path}", log_start=True, level="INFO"):
             # Restore view shards individually (workaround for usearch bug #643:
             # Indexes(paths=[...]) segfaults). References kept to prevent GC.
             self._viewed_indexes = []

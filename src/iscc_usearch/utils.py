@@ -41,18 +41,20 @@ class timer:
 
     :param message: Description of the operation being timed.
     :param log_start: If True, log a "started" message on entry.
+    :param level: Log level for messages (default: "DEBUG").
     """
 
-    def __init__(self, message: str, log_start=False):
+    def __init__(self, message: str, log_start=False, level="DEBUG"):
         self.message = message
         self.log_start = log_start
+        self.level = level
 
     def __enter__(self):
         """Start the timer."""
         # Record the start time first to ensure it's set before any potential errors
         self.start_time = time.perf_counter()
         if self.log_start:
-            logger.info(f"{self.message} - started")
+            logger.log(self.level, f"{self.message} - started")
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -60,5 +62,5 @@ class timer:
         # Calculate the elapsed time
         elapsed_time = time.perf_counter() - self.start_time
         # Log the message with the elapsed time
-        logger.info(f"{self.message} - completed ({elapsed_time:.4f} seconds)")
+        logger.log(self.level, f"{self.message} - completed ({elapsed_time:.4f} seconds)")
         return False
