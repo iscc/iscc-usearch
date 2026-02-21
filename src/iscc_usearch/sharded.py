@@ -160,10 +160,10 @@ class ShardedIndexedKeys:
             for idx in self._index._viewed_indexes:
                 shard_len = len(idx)
                 if current + shard_len > index:
-                    return idx.keys[index - current]
+                    return cast(int, idx.keys[index - current])
                 current += shard_len
             if self._index._active_shard is not None:
-                return self._index._active_shard.keys[index - current]
+                return cast(int, self._index._active_shard.keys[index - current])
             raise IndexError("index out of range")  # pragma: no cover
 
         # Slow path: dedup/tombstone filtering - len() may overcount
@@ -176,7 +176,7 @@ class ShardedIndexedKeys:
         result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
         if result is _SENTINEL:
             raise IndexError("index out of range")
-        return result
+        return cast(int, result)
 
     def __array__(self, dtype: Any = None) -> NDArray:
         """Convert to numpy array.
@@ -325,7 +325,7 @@ class ShardedIndexedVectors:
         result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
         if result is _SENTINEL:
             raise IndexError("index out of range")
-        return result
+        return cast(NDArray[Any], result)
 
     def __array__(self, dtype: Any = None) -> NDArray[Any]:
         """Support numpy array conversion.
@@ -580,8 +580,10 @@ class ShardedIndex:
         if self._active_shard is None:
             self._active_shard = self._create_shard()
 
-        # Delegate to active shard
-        result = self._active_shard.add(keys, vectors, copy=copy, threads=threads, log=log, progress=progress)
+        # Delegate to active shard (usearch accepts None keys for auto-generation)
+        result = self._active_shard.add(
+            cast(Any, keys), vectors, copy=copy, threads=threads, log=log, progress=progress
+        )
 
         # Always update bloom filter if it exists (keeps it in sync regardless of _use_bloom)
         if self._bloom is not None:
@@ -801,7 +803,7 @@ class ShardedIndex:
         # Active shard wins — always check first
         if self._active_shard is not None:
             if self._active_shard.contains(key):
-                return self._active_shard.get(key, dtype=dtype)
+                return cast(NDArray[Any] | None, self._active_shard.get(key, dtype=dtype))
 
         # Tombstone check — skip view shards if tombstoned
         if self._tombstone_key(key) in self._tombstones:
@@ -810,7 +812,7 @@ class ShardedIndex:
         # Check view shards (newest first)
         for idx in reversed(self._viewed_indexes):
             if idx.contains(key):
-                return idx.get(key, dtype=dtype)
+                return cast(NDArray[Any] | None, idx.get(key, dtype=dtype))
 
         return None
 
@@ -849,7 +851,7 @@ class ShardedIndex:
             exist_keys = unfound_keys[exist_local_indices]
             exist_orig_indices = unfound_indices[exist_local_indices]
 
-            vectors = idx.get(self._shard_batch_keys(exist_keys), dtype=dtype)
+            vectors = cast(NDArray[Any], idx.get(self._shard_batch_keys(exist_keys), dtype=dtype))
 
             # Store results
             for orig_idx, vec in zip(exist_orig_indices, vectors):
@@ -991,14 +993,14 @@ class ShardedIndex:
         total = 0
 
         if self._active_shard is not None:
-            total += self._active_shard.count(key)
+            total += int(self._active_shard.count(key))
 
         # Skip view shards for tombstoned keys
         if self._tombstone_key(key) in self._tombstones:
             return total
 
         for idx in self._viewed_indexes:
-            total += idx.count(key)
+            total += int(idx.count(key))
 
         return total
 

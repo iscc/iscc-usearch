@@ -3,7 +3,8 @@ Scalable ANNS search for variable-length binary bit-vectors with NPHD metric.
 """
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, Any, Union  # noqa: F401 - used in type comments
+import math
+from typing import TYPE_CHECKING, Any, Optional, Union  # noqa: F401 - used in type comments
 
 import numpy as np
 from numpy.typing import NDArray
@@ -143,7 +144,7 @@ class NphdIndex(Index):
 
         if isinstance(results, np.ndarray):
             if results.ndim == 1:
-                return unpad_vectors(results.reshape(1, -1))[0]
+                return unpad_vectors(np.reshape(results, (1, -1)))[0]
             return unpad_vectors(results)
 
         return [
@@ -151,14 +152,18 @@ class NphdIndex(Index):
             for r in results
         ]
 
-    def search(self, vectors, count=10, **kwargs):
-        # type: (Vectors, int, Any) -> Union[Matches, BatchMatches]
+    def search(self, vectors, count=10, radius=math.inf, *, threads=0, exact=False, log=False, progress=None):
+        # type: (Vectors, int, float, int, bool, Union[str, bool], Optional[Any]) -> Union[Matches, BatchMatches]
         """
         Search for nearest neighbors of query vector(s).
 
         :param vectors: Single vector or batch of variable-length vectors to query
         :param count: Maximum number of nearest neighbors to return per query
-        :param kwargs: Additional arguments passed to parent Index.search()
+        :param radius: Maximum distance for results
+        :param threads: Number of threads (0 = auto)
+        :param exact: Perform exact search
+        :param log: Enable progress logging
+        :param progress: Optional progress callback
         :return: Matches for single query or BatchMatches for batch queries
         :raises ValueError: If count < 1
         """
@@ -171,7 +176,9 @@ class NphdIndex(Index):
         padded = pad_vectors(vectors, self.max_bytes)
 
         # Call parent search with padded vectors
-        return super().search(padded, count=count, **kwargs)
+        return super().search(
+            padded, count=count, radius=radius, threads=threads, exact=exact, log=log, progress=progress
+        )
 
     def load(self, path_or_buffer=None, progress=None):
         # type: (Any, Any) -> None

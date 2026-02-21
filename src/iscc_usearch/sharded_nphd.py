@@ -5,7 +5,7 @@ from __future__ import annotations
 import itertools
 import os
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Sequence, cast
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,7 +14,7 @@ from usearch.index import BatchMatches, Index, Matches
 from usearch.index import MetricKind
 
 from iscc_usearch.nphd import pad_vectors, unpad_vectors
-from iscc_usearch.sharded import ShardedIndex, _UuidKeyMixin
+from iscc_usearch.sharded import DEFAULT_SHARD_SIZE, ShardedIndex, _UuidKeyMixin
 
 _SENTINEL = object()
 
@@ -122,9 +122,9 @@ class ShardedNphdIndexedVectors:
         result = next(itertools.islice(iter(self), index, index + 1), _SENTINEL)
         if result is _SENTINEL:
             raise IndexError("index out of range")
-        return result
+        return cast(NDArray[np.uint8], result)
 
-    def __array__(self, dtype: np.typing.DTypeLike = None) -> NDArray[np.uint8]:
+    def __array__(self, dtype: np.typing.DTypeLike | None = None) -> NDArray[np.uint8]:
         """Support numpy array conversion for uniform-length vectors only.
 
         Warning: This materializes all vectors into memory and requires
@@ -163,13 +163,6 @@ class ShardedNphdIndex(ShardedIndex):
 
     CONCURRENCY: Single-process only. No file locking. Use async/await within
     a single process for concurrent access.
-
-    :param max_dim: Maximum bits per vector (auto-detected from existing shards if omitted)
-    :param path: Directory path for shard storage (required)
-    :param shard_size: Size limit in bytes before rotating shards (default 1GB)
-    :param connectivity: HNSW connectivity parameter (M)
-    :param expansion_add: Search depth on insertions (efConstruction)
-    :param expansion_search: Search depth on queries (ef)
     """
 
     def __init__(
@@ -177,9 +170,21 @@ class ShardedNphdIndex(ShardedIndex):
         *,
         max_dim: int | None = None,
         path: str | os.PathLike,
+        shard_size: int = DEFAULT_SHARD_SIZE,
+        connectivity: int | None = None,
+        expansion_add: int | None = None,
+        expansion_search: int | None = None,
         **kwargs: Any,
     ) -> None:
-        """Initialize a sharded NPHD index."""
+        """Initialize a sharded NPHD index.
+
+        :param max_dim: Maximum bits per vector (auto-detected from existing shards if omitted)
+        :param path: Directory path for shard storage (required)
+        :param shard_size: Size limit in bytes before rotating shards (default 1GB)
+        :param connectivity: HNSW connectivity parameter (M)
+        :param expansion_add: Search depth on insertions (efConstruction)
+        :param expansion_search: Search depth on queries (ef)
+        """
         # Store path early for _resolve_max_dim
         self._path = Path(path)
         self._path.mkdir(parents=True, exist_ok=True)
@@ -199,6 +204,10 @@ class ShardedNphdIndex(ShardedIndex):
             metric=MetricKind.NPHD,
             dtype="b1",  # ScalarKind.B1
             path=path,
+            shard_size=shard_size,
+            connectivity=connectivity,
+            expansion_add=expansion_add,
+            expansion_search=expansion_search,
             **kwargs,
         )
 
@@ -274,7 +283,7 @@ class ShardedNphdIndex(ShardedIndex):
     def add(
         self,
         keys: int | None | Any,
-        vectors: NDArray[Any],
+        vectors: NDArray[Any] | Sequence[NDArray[Any]],
         *,
         copy: bool = True,
         threads: int = 0,
@@ -294,16 +303,15 @@ class ShardedNphdIndex(ShardedIndex):
         :return: Key(s) for added vectors
         """
         # Handle single vector - wrap in list for padding
-        if hasattr(vectors, "ndim") and vectors.ndim == 1:
-            vectors = [vectors]
+        vecs: Any = [vectors] if hasattr(vectors, "ndim") and vectors.ndim == 1 else vectors
 
         # Pad vectors to uniform size
-        padded = pad_vectors(vectors, self._max_bytes)
+        padded = pad_vectors(vecs, self._max_bytes)
 
         # Call parent add with padded vectors
         return super().add(keys, padded, copy=copy, threads=threads, log=log, progress=progress)
 
-    def upsert(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> int | NDArray:
+    def upsert(self, keys: Any, vectors: NDArray[Any] | Sequence[NDArray[Any]], **kwargs: Any) -> int | NDArray:
         """Insert or update variable-length vectors by key.
 
         Handles ragged/mixed-length vectors that np.asarray cannot stack.
@@ -325,12 +333,11 @@ class ShardedNphdIndex(ShardedIndex):
 
         # Batch path — handle variable-length vectors without np.asarray
         keys_arr = self._normalize_batch_keys(keys)
-        if hasattr(vectors, "ndim") and vectors.ndim == 1:
-            vectors = [vectors]
-        if isinstance(vectors, np.ndarray) and vectors.ndim == 2:
-            vectors_seq = vectors
+        vecs: Any = [vectors] if hasattr(vectors, "ndim") and vectors.ndim == 1 else vectors
+        if isinstance(vecs, np.ndarray) and vecs.ndim == 2:
+            vectors_seq: Any = vecs
         else:
-            vectors_seq = list(vectors)
+            vectors_seq = list(vecs)
         if len(keys_arr) != len(vectors_seq):
             raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_seq)})")
         # Reverse-unique: flip, unique, flip back — keeps last occurrence
@@ -340,7 +347,7 @@ class ShardedNphdIndex(ShardedIndex):
         if len(unique_idx) < len(keys_arr):
             keys_arr = keys_arr[unique_idx]
             if isinstance(vectors_seq, np.ndarray):
-                vectors_seq = vectors_seq[unique_idx]
+                vectors_seq = cast(Any, vectors_seq)[unique_idx]
             else:
                 vectors_seq = [vectors_seq[i] for i in unique_idx]
 
@@ -350,7 +357,7 @@ class ShardedNphdIndex(ShardedIndex):
     def add_once(
         self,
         keys: int | Any,
-        vectors: NDArray[Any],
+        vectors: NDArray[Any] | Sequence[NDArray[Any]],
         **kwargs: Any,
     ) -> int | NDArray | None:
         """Add variable-length vectors, skipping keys that already exist.
@@ -375,12 +382,11 @@ class ShardedNphdIndex(ShardedIndex):
         # Batch path — vectors may be mixed-length, cannot use np.asarray
         keys_arr = self._normalize_batch_keys(keys)
         # Match add() normalization: treat 1D ndarray as a single vector
-        if hasattr(vectors, "ndim") and vectors.ndim == 1:
-            vectors = [vectors]
-        if isinstance(vectors, np.ndarray) and vectors.ndim == 2:
-            vectors_seq = vectors
+        vecs: Any = [vectors] if hasattr(vectors, "ndim") and vectors.ndim == 1 else vectors
+        if isinstance(vecs, np.ndarray) and vecs.ndim == 2:
+            vectors_seq: Any = vecs
         else:
-            vectors_seq = list(vectors)
+            vectors_seq = list(vecs)
         if len(keys_arr) != len(vectors_seq):
             raise ValueError(f"Number of keys ({len(keys_arr)}) must match number of vectors ({len(vectors_seq)})")
         # Deduplicate within batch — keep first occurrence
@@ -388,7 +394,7 @@ class ShardedNphdIndex(ShardedIndex):
         first_indices = np.sort(first_indices)
         keys_arr = keys_arr[first_indices]
         if isinstance(vectors_seq, np.ndarray):
-            vectors_seq = vectors_seq[first_indices]
+            vectors_seq = cast(Any, vectors_seq)[first_indices]
         else:
             vectors_seq = [vectors_seq[i] for i in first_indices]
         # Filter out keys already in index
@@ -399,7 +405,7 @@ class ShardedNphdIndex(ShardedIndex):
         new_keys = keys_arr[new_mask]
         new_indices = np.where(new_mask)[0]
         if isinstance(vectors_seq, np.ndarray):
-            new_vectors = vectors_seq[new_indices]
+            new_vectors = cast(Any, vectors_seq)[new_indices]
         else:
             new_vectors = [vectors_seq[i] for i in new_indices]
         return self.add(new_keys, new_vectors, **kwargs)
@@ -432,11 +438,10 @@ class ShardedNphdIndex(ShardedIndex):
         is_single = hasattr(vectors, "ndim") and vectors.ndim == 1
 
         # Handle single vector - wrap in list for padding
-        if is_single:
-            vectors = [vectors]
+        vecs: Any = [vectors] if is_single else vectors
 
         # Pad vectors to uniform size (handles variable-length vectors)
-        padded = pad_vectors(vectors, self._max_bytes)
+        padded = pad_vectors(vecs, self._max_bytes)
 
         # For single query, pass 1D array so parent returns Matches
         if is_single:
@@ -472,9 +477,10 @@ class ShardedNphdIndex(ShardedIndex):
             return unpad_vectors(np.asarray(result).reshape(1, -1))[0]
 
         # Multiple keys case - parent returns list with None for missing keys
-        results = super().get(keys, dtype=dtype)
+        keys_seq = cast(Sequence[int], keys)
+        results = super().get(keys_seq, dtype=dtype)
         if results is None:  # pragma: no cover - defensive check
-            return [None] * len(keys)
+            return [None] * len(keys_seq)
 
         # Unpad found vectors, preserve None for missing keys
         return [unpad_vectors(r.reshape(1, -1))[0] if r is not None else None for r in results]

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import struct
 from pathlib import Path
-from typing import Sequence
+from typing import Sequence, cast
 
 from fastbloom_rs import BloomFilter
 
@@ -126,9 +126,9 @@ class ScalableBloomFilter:
 
             # Add batch to current filter using native operation
             if is_bytes:
-                self._filters[-1].add_bytes_batch(batch)
+                self._filters[-1].add_bytes_batch(cast(list[bytes], batch))
             else:
-                self._filters[-1].add_int_batch(batch)
+                self._filters[-1].add_int_batch(cast(list[int], batch))
             self._count += len(batch)
 
     def contains(self, key: int | bytes) -> bool:
@@ -165,15 +165,15 @@ class ScalableBloomFilter:
         # Fast path: single filter (most common case)
         if len(self._filters) == 1:
             if is_bytes:
-                return self._filters[0].contains_bytes_batch(keys_list)
-            return self._filters[0].contains_int_batch(keys_list)
+                return list(self._filters[0].contains_bytes_batch(cast(list[bytes], keys_list)))
+            return list(self._filters[0].contains_int_batch(cast(list[int], keys_list)))
         # Multiple filters: check each (newest first) and OR results
         result = [False] * len(keys_list)
         for f in reversed(self._filters):
             if is_bytes:
-                filter_results = f.contains_bytes_batch(keys_list)
+                filter_results = f.contains_bytes_batch(cast(list[bytes], keys_list))
             else:
-                filter_results = f.contains_int_batch(keys_list)
+                filter_results = f.contains_int_batch(cast(list[int], keys_list))
             for i, maybe in enumerate(filter_results):
                 if maybe:
                     result[i] = True

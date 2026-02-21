@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Move docs `overrides` directory into `docs/overrides` for cleaner project root
+- Make `shard_size`, `connectivity`, `expansion_add`, `expansion_search` explicit parameters on
+    `ShardedNphdIndex.__init__` (fixes griffe doc generation warnings)
+- Resolve all `ty` type checker warnings caused by upstream type stubs and type narrowing gaps
+- Match `NphdIndex.search()` signature to parent `Index.search()` (fixes LSP violation)
+
 ## [0.5.0] - 2026-02-20
 
 ### Changed
