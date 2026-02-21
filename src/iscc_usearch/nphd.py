@@ -43,6 +43,8 @@ def pad_vectors(vectors, nbytes):
     padded = np.zeros((batch_size, nbytes + 1), dtype=np.uint8)
     for i in range(batch_size):
         vec = vectors[i]
+        if isinstance(vec, (bytes, bytearray)):
+            vec = np.frombuffer(vec, dtype=np.uint8)
         length = min(len(vec), nbytes)
         padded[i, 0] = len(vec)
         padded[i, 1 : length + 1] = vec[:length]

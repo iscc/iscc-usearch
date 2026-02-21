@@ -120,6 +120,42 @@ def test_unpad_vectors_zero_length():
     assert len(result[0]) == 0
 
 
+def test_pad_vectors_bytes_input():
+    """Test padding with raw bytes objects."""
+    vectors = [b"\x01\x02\x03\x04\x05\x06\x07\x08"]
+    result = pad_vectors(vectors, nbytes=32)
+
+    assert result.shape == (1, 33)
+    assert result[0, 0] == 8  # Length prefix
+    assert np.array_equal(result[0, 1:9], [1, 2, 3, 4, 5, 6, 7, 8])
+    assert np.all(result[0, 9:] == 0)  # Padding
+
+
+def test_pad_vectors_bytearray_input():
+    """Test padding with bytearray objects."""
+    vectors = [bytearray(b"\xff\x80\x40")]
+    result = pad_vectors(vectors, nbytes=5)
+
+    assert result.shape == (1, 6)
+    assert result[0, 0] == 3
+    assert np.array_equal(result[0, 1:4], [255, 128, 64])
+
+
+def test_pad_vectors_mixed_bytes_and_arrays():
+    """Test padding with a mix of bytes and numpy arrays."""
+    vectors = [
+        b"\x01\x02\x03",
+        np.array([4, 5], dtype=np.uint8),
+        bytearray(b"\x06"),
+    ]
+    result = pad_vectors(vectors, nbytes=4)
+
+    assert result.shape == (3, 5)
+    assert result[0, 0] == 3
+    assert result[1, 0] == 2
+    assert result[2, 0] == 1
+
+
 def test_pad_unpad_roundtrip():
     """Test that pad_vectors and unpad_vectors are inverses."""
     original_vectors = [

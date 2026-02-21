@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Accept `bytes` and `bytearray` in `pad_vectors()` per-element loop ([#14](https://github.com/iscc/iscc-usearch/issues/14))
+
 ### Changed
 
 - Move docs `overrides` directory into `docs/overrides` for cleaner project root
