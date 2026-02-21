@@ -5,8 +5,6 @@ and resets after save/load/view/reset operations.
 """
 
 import numpy as np
-import pytest
-from pathlib import Path
 
 from iscc_usearch import NphdIndex, ShardedIndex, ShardedIndex128, ShardedNphdIndex, ShardedNphdIndex128
 
