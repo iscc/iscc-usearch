@@ -95,6 +95,7 @@ class NphdIndex(Index):
 
         self.max_dim = max_dim
         self.max_bytes = max_dim // 8
+        self._dirty: int = 0
 
         if "ndim" in kwargs:
             raise TypeError("`ndim` is calculated from `max_dim`")
@@ -109,6 +110,18 @@ class NphdIndex(Index):
             dtype=ScalarKind.B1,
             **kwargs,
         )
+
+    @property
+    def dirty(self):
+        # type: () -> int
+        """Number of unsaved key mutations since last save/load/view/reset.
+
+        Counts individual keys added or removed. Useful for implementing
+        caller-driven flush policies (e.g. "save every N writes").
+
+        :return: Count of key mutations since last persistence operation.
+        """
+        return self._dirty
 
     def add(self, keys, vectors, **kwargs):
         # type: (Key | Sequence[int], Vectors, Any) -> NDArray[np.uint64]
@@ -128,7 +141,24 @@ class NphdIndex(Index):
         padded = pad_vectors(vectors, self.max_bytes)
 
         # Call parent add with padded vectors
-        return super().add(keys, padded, **kwargs)
+        result = super().add(keys, padded, **kwargs)
+        self._dirty += len(padded)
+        return result
+
+    def remove(self, keys, **kwargs):
+        # type: (int | Sequence[int], Any) -> None
+        """
+        Remove vectors by key(s).
+
+        :param keys: Integer key(s) to remove
+        :param kwargs: Additional arguments passed to parent Index.remove()
+        """
+        if isinstance(keys, (int, np.integer)):
+            n = 1
+        else:
+            n = len(np.atleast_1d(np.asarray(keys)))
+        super().remove(keys, **kwargs)
+        self._dirty += n
 
     def get(self, keys, dtype=None):
         # type: (int | Sequence[int], Any) -> Vector | list | None
@@ -182,6 +212,19 @@ class NphdIndex(Index):
             padded, count=count, radius=radius, threads=threads, exact=exact, log=log, progress=progress
         )
 
+    def save(self, *args, **kwargs):
+        # type: (Any, Any) -> Any
+        """
+        Save index to file or buffer and reset dirty counter.
+
+        Accepts the same arguments as usearch Index.save().
+
+        :return: Serialized buffer when saving to memory, None when saving to file.
+        """
+        result = super().save(*args, **kwargs)
+        self._dirty = 0
+        return result
+
     def load(self, path_or_buffer=None, progress=None):
         # type: (Any, Any) -> None
         """
@@ -193,6 +236,7 @@ class NphdIndex(Index):
         super().load(path_or_buffer, progress)
         self.max_dim = self.ndim - 8
         self.max_bytes = self.max_dim // 8
+        self._dirty = 0
 
     def view(self, path_or_buffer=None, progress=None):
         # type: (Any, Any) -> None
@@ -205,6 +249,15 @@ class NphdIndex(Index):
         super().view(path_or_buffer, progress)
         self.max_dim = self.ndim - 8
         self.max_bytes = self.max_dim // 8
+        self._dirty = 0
+
+    def reset(self):
+        # type: () -> None
+        """
+        Reset the index to empty state and clear dirty counter.
+        """
+        super().reset()
+        self._dirty = 0
 
     def copy(self):
         # type: () -> NphdIndex
