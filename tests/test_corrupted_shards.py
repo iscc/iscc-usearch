@@ -6,8 +6,12 @@ instead of crashing the process. Corrupted shards should be skipped with warning
 and the index should remain operational with whatever valid shards remain.
 """
 
+from pathlib import Path
+from unittest.mock import patch
+
 import numpy as np
 import pytest
+from usearch.index import Index
 
 from iscc_usearch import CorruptedShardError, ShardedIndex, ShardedNphdIndex
 
@@ -273,3 +277,241 @@ class TestShardedNphdIndexCorruptedShards:
         new_vectors = [np.random.bytes(8) for _ in range(3)]
         idx2.add(list(range(3)), new_vectors)
         assert len(idx2) == 3
+
+
+class TestMetadataReturnsNone:
+    """Test paths where Index.metadata() returns None instead of raising."""
+
+    def test_restore_shard_metadata_none_base(self, tmp_path):
+        """ShardedIndex._restore_shard returns None when metadata() returns None."""
+        idx = ShardedIndex(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            idx2 = ShardedIndex(ndim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_metadata_none_nphd(self, tmp_path):
+        """ShardedNphdIndex._restore_shard returns None when metadata() returns None."""
+        idx = ShardedNphdIndex(max_dim=64, path=tmp_path)
+        vectors = [np.random.bytes(8) for _ in range(5)]
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            idx2 = ShardedNphdIndex(max_dim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_metadata_none_uuid(self, tmp_path):
+        """ShardedIndex128._restore_shard returns None when metadata() returns None."""
+        from iscc_usearch.sharded import ShardedIndex128
+
+        idx = ShardedIndex128(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        keys = [i.to_bytes(16, "big") for i in range(5)]
+        idx.add(keys, vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            idx2 = ShardedIndex128(ndim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_metadata_none_nphd_uuid(self, tmp_path):
+        """ShardedNphdIndex128._restore_shard returns None when metadata() returns None."""
+        from iscc_usearch.sharded_nphd import ShardedNphdIndex128
+
+        idx = ShardedNphdIndex128(max_dim=64, path=tmp_path)
+        keys = [i.to_bytes(16, "big") for i in range(5)]
+        vectors = [np.random.bytes(8) for _ in range(5)]
+        idx.add(keys, vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            idx2 = ShardedNphdIndex128(max_dim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_resolve_config_metadata_none_all_shards(self, tmp_path):
+        """_resolve_config raises when all shard metadata returns None and ndim not given."""
+        idx = ShardedIndex(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            with pytest.raises(ValueError, match="all shard metadata unreadable"):
+                ShardedIndex(path=tmp_path)
+
+    def test_resolve_config_metadata_none_with_ndim(self, tmp_path):
+        """_resolve_config uses provided ndim when all shard metadata returns None."""
+        idx = ShardedIndex(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            idx2 = ShardedIndex(ndim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_resolve_max_dim_metadata_none_all_shards(self, tmp_path):
+        """_resolve_max_dim raises when all shard metadata returns None and max_dim not given."""
+        idx = ShardedNphdIndex(max_dim=64, path=tmp_path)
+        vectors = [np.random.bytes(8) for _ in range(5)]
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        with patch.object(Index, "metadata", return_value=None):
+            with pytest.raises(ValueError, match="all shard metadata unreadable"):
+                ShardedNphdIndex(path=tmp_path)
+
+
+class TestAllCorruptedBloomCreation:
+    """Test bloom filter creation when all shards are corrupted."""
+
+    def test_all_corrupted_read_only_no_bloom_creates_bloom(self, tmp_path):
+        """When all shards corrupted (read-only) and no bloom file, new bloom is created."""
+        idx = ShardedIndex(ndim=64, path=tmp_path, bloom_filter=True)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        # Corrupt shard AND remove bloom file
+        for shard_file in tmp_path.glob("shard_*.usearch"):
+            shard_file.write_bytes(b"CORRUPTED DATA")
+        bloom_path = tmp_path / "bloom.isbf"
+        if bloom_path.exists():
+            bloom_path.unlink()
+
+        # Read-only with all corrupted + no bloom → falls to all-corrupted path with bloom creation
+        idx2 = ShardedIndex(ndim=64, path=tmp_path, bloom_filter=True, read_only=True)
+        assert len(idx2) == 0
+        assert idx2._bloom is not None
+
+
+class TestRestoreShardExceptionPaths128:
+    """Test exception paths in _restore_shard for UUID variants."""
+
+    def test_restore_shard_metadata_exception_uuid(self, tmp_path):
+        """ShardedIndex128._restore_shard handles metadata exception."""
+        from iscc_usearch.sharded import ShardedIndex128
+
+        idx = ShardedIndex128(ndim=64, path=tmp_path)
+        keys = [i.to_bytes(16, "big") for i in range(5)]
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(keys, vectors)
+        idx.save()
+
+        # Corrupt shard so metadata() raises
+        for shard_file in tmp_path.glob("shard_*.usearch"):
+            shard_file.write_bytes(b"CORRUPTED")
+
+        idx2 = ShardedIndex128(ndim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_metadata_exception_nphd_uuid(self, tmp_path):
+        """ShardedNphdIndex128._restore_shard handles metadata exception."""
+        from iscc_usearch.sharded_nphd import ShardedNphdIndex128
+
+        idx = ShardedNphdIndex128(max_dim=64, path=tmp_path)
+        keys = [i.to_bytes(16, "big") for i in range(5)]
+        vectors = [np.random.bytes(8) for _ in range(5)]
+        idx.add(keys, vectors)
+        idx.save()
+
+        # Corrupt shard so metadata() raises
+        for shard_file in tmp_path.glob("shard_*.usearch"):
+            shard_file.write_bytes(b"CORRUPTED")
+
+        idx2 = ShardedNphdIndex128(max_dim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_load_fails_nphd(self, tmp_path):
+        """ShardedNphdIndex._restore_shard returns None when load() raises."""
+        idx = ShardedNphdIndex(max_dim=64, path=tmp_path)
+        vectors = [np.random.bytes(8) for _ in range(5)]
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        def failing_load(self, *args, **kwargs):
+            raise RuntimeError("simulated HNSW graph corruption")
+
+        with patch.object(Index, "load", failing_load):
+            idx2 = ShardedNphdIndex(max_dim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+
+class TestLoadViewExceptionPaths:
+    """Test paths where Index.load() or Index.view() raises after metadata succeeds."""
+
+    def _make_index_with_shard(self, tmp_path, cls=ShardedIndex, **kwargs):
+        """Create an index with one saved shard."""
+        idx = cls(path=tmp_path, **kwargs)
+        return idx
+
+    def test_restore_shard_load_fails_base(self, tmp_path):
+        """ShardedIndex._restore_shard returns None when load() raises."""
+        idx = ShardedIndex(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        # Patch Index.load to raise after metadata succeeds
+        original_load = Index.load
+
+        def failing_load(self, *args, **kwargs):
+            raise RuntimeError("simulated HNSW graph corruption")
+
+        with patch.object(Index, "load", failing_load):
+            idx2 = ShardedIndex(ndim=64, path=tmp_path)
+        assert len(idx2) == 0
+
+    def test_restore_shard_view_fails_base(self, tmp_path):
+        """ShardedIndex._restore_shard returns None when view() raises."""
+        idx = ShardedIndex(ndim=64, path=tmp_path)
+        vectors = np.random.rand(5, 64).astype(np.float32)
+        idx.add(list(range(5)), vectors)
+        idx.save()
+
+        original_view = Index.view
+
+        def failing_view(self, *args, **kwargs):
+            raise RuntimeError("simulated mmap corruption")
+
+        with patch.object(Index, "view", failing_view):
+            # In read-only mode, all shards use view
+            idx2 = ShardedIndex(ndim=64, path=tmp_path, read_only=True)
+        assert len(idx2) == 0
+
+    def test_all_shards_corrupted_read_only_empty(self, tmp_path):
+        """Read-only mode with all shards corrupted creates empty index."""
+        idx = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+        for i in range(100):
+            idx.add(i, np.random.rand(64).astype(np.float32))
+        idx.save()
+
+        # Corrupt all shards
+        for shard_file in tmp_path.glob("shard_*.usearch"):
+            shard_file.write_bytes(b"CORRUPTED DATA")
+
+        # Read-only with all corrupted — should fall back to empty (viewed_indexes empty)
+        idx2 = ShardedIndex(ndim=64, path=tmp_path, read_only=True)
+        assert len(idx2) == 0
+
+    def test_read_only_all_corrupted_last_shard_from_views(self, tmp_path):
+        """Read-only mode uses last viewed shard for config when some are valid."""
+        idx = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+        for i in range(100):
+            idx.add(i, np.random.rand(64).astype(np.float32))
+        idx.save()
+
+        shard_files = sorted(tmp_path.glob("shard_*.usearch"))
+        assert len(shard_files) >= 2
+
+        # Corrupt only the first shard
+        shard_files[0].write_bytes(b"CORRUPTED DATA")
+
+        # Read-only — should pick last_shard from viewed_indexes
+        idx2 = ShardedIndex(ndim=64, path=tmp_path, read_only=True)
+        assert len(idx2) > 0
+        assert idx2._active_shard is None  # read-only, no active shard

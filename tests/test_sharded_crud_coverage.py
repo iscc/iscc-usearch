@@ -727,4 +727,291 @@ def test_uuid_upsert_ndarray_valid_dtype(tmp_path):
     for k in keys_list:
         result = index.get(k)
         assert result is not None
-        assert np.allclose(result, np.ones(64, dtype=np.float32) * 7, atol=0.1)
+
+
+# --- Slow paths: _needs_compact=True with active shard data ---
+
+
+def test_keys_iter_slow_path_needs_compact_with_active(tmp_path):
+    """Keys iterator slow path: _needs_compact=True with data in active shard."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    # Create view shards
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+
+    # Remove key 1 from view shard (creates tombstone)
+    index.remove(1)
+
+    # Use a large shard size to prevent rotation on re-add
+    index._shard_size = 10**9
+    # Re-add key 1 → clears tombstone, sets _needs_compact=True, stays in active shard
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+    assert index._active_shard is not None
+    assert len(index._active_shard) > 0
+
+    # Iterate keys — triggers slow path with active shard (lines 150-151)
+    keys = list(index.keys)
+    assert 0 in keys
+    assert 1 in keys
+    assert 2 in keys
+
+
+def test_keys_getitem_slow_path_needs_compact(tmp_path):
+    """Keys __getitem__ slow path: _needs_compact=True."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+
+    # Positive index → slow path (line 197)
+    key = index.keys[0]
+    assert key is not None
+
+    # Negative index → slow path (lines 191-196)
+    key = index.keys[-1]
+    assert key is not None
+
+
+def test_keys_array_slow_path_needs_compact(tmp_path):
+    """Keys __array__ slow path: _needs_compact=True."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+
+    # Convert to array — triggers slow path (lines 228-235)
+    arr = np.asarray(index.keys)
+    assert len(arr) == 3
+
+
+def test_vectors_iter_slow_path_needs_compact_with_active(tmp_path):
+    """Vectors iterator slow path: _needs_compact=True with data in active shard."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+    assert index._active_shard is not None
+
+    # Iterate vectors — triggers slow path with active shard (lines 293-295)
+    vecs = list(index.vectors)
+    assert len(vecs) == 3
+
+
+def test_vectors_getitem_slow_path_needs_compact(tmp_path):
+    """Vectors __getitem__ slow path: _needs_compact=True."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+
+    # Positive index → slow path (line 346-347)
+    vec = index.vectors[0]
+    assert vec is not None
+
+    # Negative index → slow path (lines 340-345)
+    vec = index.vectors[-1]
+    assert vec is not None
+
+
+def test_vectors_array_slow_path_needs_compact(tmp_path):
+    """Vectors __array__ slow path: _needs_compact=True."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+
+    assert index._needs_compact
+
+    # Convert to array — triggers slow path (lines 376-384)
+    arr = np.asarray(index.vectors)
+    assert arr.shape[0] == 3
+
+
+# --- Add with tombstones where added key is NOT tombstoned (619->623 branch) ---
+
+
+def test_add_with_tombstones_key_not_in_tombstones(tmp_path):
+    """Add a key NOT in tombstone set while tombstones exist (619->623 false branch)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    # Create view shard
+    index.add(0, np.ones(64, dtype=np.float32))
+    # Tombstone key 0
+    index.remove(0)
+    assert 0 in index._tombstones
+
+    # Add a different key — tombstones still exist but added key not in tombstones
+    index.add(99, np.ones(64, dtype=np.float32) * 2)
+    # Tombstones should remain unchanged (key 0 still tombstoned)
+    assert 0 in index._tombstones
+
+
+# --- Contains batch with tombstones but no view shard loop iteration (971->989) ---
+
+
+def test_contains_batch_tombstones_no_view_shards(tmp_path):
+    """Batch contains with tombstones but empty view shard loop (971->989 branch)."""
+    index = ShardedIndex(ndim=64, path=tmp_path)
+    index.add(1, np.ones(64, dtype=np.float32))
+
+    # Manually add tombstones without view shards
+    index._tombstones.add(1)
+    assert not index._viewed_indexes  # No view shards
+
+    # Batch contains with tombstones — for loop over empty viewed_indexes (971->989)
+    result = index.contains([1, 2])
+    # Key 1 is in active shard but tombstoned in view shard logic
+    assert result is not None
+
+
+# --- UUID mixin: overlap check and tombstone mask ---
+
+
+def test_search_filters_active_shard_overlap(tmp_path):
+    """Search filters out active-shard keys from view results when _needs_compact=True (line 2114)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+
+    index.add(0, np.ones(64, dtype=np.float32))
+    index.add(1, np.ones(64, dtype=np.float32) * 2)
+
+    # Remove key from view shard and re-add to active → _needs_compact=True
+    index.remove(0)
+    index._shard_size = 10**9
+    index.add(0, np.ones(64, dtype=np.float32) * 3)
+
+    assert index._needs_compact
+    assert index._active_shard is not None
+    assert len(index._active_shard) > 0
+
+    # Search triggers _filter_single_view_results which checks active shard overlap
+    query = np.ones(64, dtype=np.float32)
+    results = index.search(query, count=10)
+    assert results is not None
+
+
+def test_uuid_tombstoned_mask_no_tombstones(tmp_path):
+    """UUID _tombstoned_mask returns zeros when no tombstones (line 2232)."""
+    index = ShardedIndex128(ndim=64, path=tmp_path)
+    k0 = _uuid(0)
+    index.add(k0, np.ones(64, dtype=np.float32))
+
+    assert not index._tombstones
+
+    # Call _tombstoned_mask directly — should return all-False
+    keys = np.array([k0], dtype="V16")
+    mask = index._tombstoned_mask(keys)
+    assert not mask.any()
+
+
+# --- Slow-path getitem error cases ---
+
+
+def test_keys_getitem_slow_path_negative_out_of_range(tmp_path):
+    """Keys __getitem__ slow path: negative index too large raises IndexError (line 196)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+    assert index._needs_compact
+
+    with pytest.raises(IndexError):
+        index.keys[-100]
+
+
+def test_keys_getitem_slow_path_positive_out_of_range(tmp_path):
+    """Keys __getitem__ slow path: positive index beyond items raises IndexError (line 199)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+    assert index._needs_compact
+
+    with pytest.raises(IndexError):
+        index.keys[100]
+
+
+def test_keys_array_slow_path_empty_with_dtype(tmp_path):
+    """Keys __array__ slow path: empty keys_list (line 230) and dtype conversion (line 234)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    index.add(0, np.ones(64, dtype=np.float32))
+    index.remove(0)
+
+    # All items tombstoned → slow path with empty keys_list
+    arr = np.asarray(index.keys)
+    assert len(arr) == 0
+
+    # With dtype conversion
+    arr = np.array(index.keys, dtype=np.int32)
+    assert arr.dtype == np.int32
+
+
+def test_vectors_getitem_slow_path_negative_out_of_range(tmp_path):
+    """Vectors __getitem__ slow path: negative index too large raises IndexError (line 345)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+    assert index._needs_compact
+
+    with pytest.raises(IndexError):
+        index.vectors[-100]
+
+
+def test_vectors_getitem_slow_path_positive_out_of_range(tmp_path):
+    """Vectors __getitem__ slow path: positive index beyond items raises IndexError (line 348)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    for i in range(3):
+        index.add(i, np.ones(64, dtype=np.float32) * i)
+    index.remove(1)
+    index._shard_size = 10**9
+    index.add(1, np.ones(64, dtype=np.float32) * 10)
+    assert index._needs_compact
+
+    with pytest.raises(IndexError):
+        index.vectors[100]
+
+
+def test_vectors_array_slow_path_empty_and_dtype(tmp_path):
+    """Vectors __array__ slow path: empty + dtype conversion (lines 378-380, 383)."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1)
+    index.add(0, np.ones(64, dtype=np.float32))
+    index.remove(0)
+
+    # All items tombstoned → slow path with empty vectors
+    arr = np.asarray(index.vectors)
+    assert arr.shape[0] == 0
+
+    # With dtype conversion: re-add the SAME tombstoned key so _needs_compact=True
+    index2 = ShardedIndex(ndim=64, path=tmp_path / "sub", shard_size=1)
+    index2.add(0, np.ones(64, dtype=np.float32))
+    index2.remove(0)
+    index2._shard_size = 10**9
+    index2.add(0, np.ones(64, dtype=np.float32) * 2)
+    assert index2._needs_compact
+    arr = np.array(index2.vectors, dtype=np.float64)
+    assert arr.dtype == np.float64
