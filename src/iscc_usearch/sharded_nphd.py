@@ -214,10 +214,14 @@ class ShardedNphdIndex(ShardedIndex):
     def _resolve_max_dim(self, max_dim: int | None) -> int:
         """Resolve max_dim from existing shards or use provided value.
 
+        Tries all available shards when reading metadata, skipping any corrupted ones.
+
         :param max_dim: Provided max_dim or None for auto-detection
         :return: Resolved max_dim value
         :raises ValueError: If max_dim is None and no existing shards found
         """
+        from loguru import logger
+
         # Check for existing shards
         existing_shards = sorted(
             self._path.glob("shard_*.usearch"),
@@ -232,13 +236,19 @@ class ShardedNphdIndex(ShardedIndex):
         if max_dim is not None:
             return max_dim
 
-        # Read metadata from first shard and compute max_dim
-        meta = Index.metadata(str(existing_shards[0]))
-        if meta is None:  # pragma: no cover - shard files are always valid in practice
-            raise ValueError("max_dim is required (failed to read shard metadata)")
+        # Try reading metadata from each shard until one succeeds
+        for shard_path in existing_shards:
+            try:
+                meta = Index.metadata(str(shard_path))
+            except Exception as exc:
+                logger.warning(f"Corrupted shard (metadata unreadable): {shard_path} — {exc}")
+                continue
+            if meta is not None:
+                # ndim = max_dim + 8 (length signal byte), so max_dim = ndim - 8
+                return meta["dimensions"] - 8
+            logger.warning(f"Corrupted shard (metadata is None): {shard_path}")
 
-        # ndim = max_dim + 8 (length signal byte), so max_dim = ndim - 8
-        return meta["dimensions"] - 8
+        raise ValueError("max_dim is required (all shard metadata unreadable)")
 
     def _create_shard(self) -> Index:
         """Create a new Index shard with NPHD metric.
@@ -255,19 +265,33 @@ class ShardedNphdIndex(ShardedIndex):
         )
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore an Index shard from disk."""
-        meta = Index.metadata(str(path))
-        if meta is None:  # pragma: no cover - shard files are always valid in practice
+        """Restore an Index shard from disk.
+
+        Returns None and logs a warning if the shard file is corrupted or unreadable.
+        """
+        from loguru import logger
+
+        try:
+            meta = Index.metadata(str(path))
+        except Exception as exc:
+            logger.warning(f"Corrupted shard (metadata unreadable): {path} — {exc}")
             return None
-        shard = Index(
-            ndim=meta["dimensions"],
-            metric=MetricKind.NPHD,
-            dtype=meta["kind_scalar"],
-        )
-        if view:
-            shard.view(str(path))
-        else:
-            shard.load(str(path))
+        if meta is None:
+            logger.warning(f"Corrupted shard (metadata is None): {path}")
+            return None
+        try:
+            shard = Index(
+                ndim=meta["dimensions"],
+                metric=MetricKind.NPHD,
+                dtype=meta["kind_scalar"],
+            )
+            if view:
+                shard.view(str(path))
+            else:
+                shard.load(str(path))
+        except Exception as exc:
+            logger.warning(f"Corrupted shard (load/view failed): {path} — {exc}")
+            return None
         return shard
 
     @property
@@ -554,20 +578,34 @@ class ShardedNphdIndex128(_UuidKeyMixin, ShardedNphdIndex):
         )
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
-        """Restore a uuid-keyed NPHD shard from disk."""
-        meta = Index.metadata(str(path))
-        if meta is None:  # pragma: no cover
+        """Restore a uuid-keyed NPHD shard from disk.
+
+        Returns None and logs a warning if the shard file is corrupted or unreadable.
+        """
+        from loguru import logger
+
+        try:
+            meta = Index.metadata(str(path))
+        except Exception as exc:
+            logger.warning(f"Corrupted shard (metadata unreadable): {path} — {exc}")
             return None
-        shard = Index(
-            ndim=meta["dimensions"],
-            metric=MetricKind.NPHD,
-            dtype=meta["kind_scalar"],
-            key_kind="uuid",
-        )
-        if view:
-            shard.view(str(path))
-        else:
-            shard.load(str(path))
+        if meta is None:
+            logger.warning(f"Corrupted shard (metadata is None): {path}")
+            return None
+        try:
+            shard = Index(
+                ndim=meta["dimensions"],
+                metric=MetricKind.NPHD,
+                dtype=meta["kind_scalar"],
+                key_kind="uuid",
+            )
+            if view:
+                shard.view(str(path))
+            else:
+                shard.load(str(path))
+        except Exception as exc:
+            logger.warning(f"Corrupted shard (load/view failed): {path} — {exc}")
+            return None
         return shard
 
     def __repr__(self) -> str:

@@ -311,17 +311,17 @@ def test_save_load_batch_roundtrip(tmp_path):
         assert loaded.contains(make_key(i))
 
 
-def test_reopen_uuid_on_uint64_shards_fails(tmp_path):
-    """Opening ShardedIndex128 on uint64 shards raises error."""
+def test_reopen_uuid_on_uint64_shards_recovers_empty(tmp_path):
+    """Opening ShardedIndex128 on uint64 shards recovers gracefully with size=0."""
     path = tmp_path / "idx"
     # Create a uint64 index
     plain = ShardedIndex(ndim=8, path=path, dtype="f32")
     plain.add(1, np.ones(8, dtype=np.float32))
     plain.save()
 
-    # Try to open as uuid — usearch should reject the mismatch
-    with pytest.raises(Exception):
-        ShardedIndex128(path=path, dtype="f32")
+    # Key kind mismatch is treated as corruption — index opens with size=0
+    idx = ShardedIndex128(path=path, dtype="f32")
+    assert len(idx) == 0
 
 
 # === Multi-shard ===

@@ -413,8 +413,8 @@ def test_key_kind_kwarg_absorbed(tmp_path):
     assert len(idx) == 1
 
 
-def test_uuid_on_uint64_shards_raises(tmp_path):
-    """Opening uuid index on uint64 shards raises error."""
+def test_uuid_on_uint64_shards_recovers_empty(tmp_path):
+    """Opening uuid index on uint64 shards recovers gracefully with size=0."""
     from iscc_usearch import ShardedNphdIndex
 
     path = tmp_path / "idx"
@@ -422,8 +422,9 @@ def test_uuid_on_uint64_shards_raises(tmp_path):
     idx.add(1, np.array([1, 2, 3], dtype=np.uint8))
     idx.save()
 
-    with pytest.raises(Exception):
-        ShardedNphdIndex128(max_dim=256, path=path)
+    # Key kind mismatch is treated as corruption — index opens with size=0
+    idx2 = ShardedNphdIndex128(max_dim=256, path=path)
+    assert len(idx2) == 0
 
 
 # === Vectors Property ===
