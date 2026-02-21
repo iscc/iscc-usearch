@@ -117,6 +117,16 @@ class TestNphdIndexDirty:
         idx.add(1, vec)
         assert idx.dirty  # non-zero is truthy
 
+    def test_dirty_remove_nonexistent_key_no_increment(self):
+        """Removing a non-existent key does not bump dirty."""
+        idx = NphdIndex(max_dim=64)
+        vec = np.random.randint(0, 256, size=8, dtype=np.uint8)
+        idx.add(1, vec)
+        assert idx.dirty == 1
+
+        idx.remove(999)  # key doesn't exist
+        assert idx.dirty == 1  # unchanged
+
     def test_copy_starts_clean(self):
         """A copy of a dirty index starts with dirty=0."""
         idx = NphdIndex(max_dim=64)
@@ -244,6 +254,36 @@ class TestShardedIndexDirty:
             if idx.dirty >= flush_threshold:
                 idx.save()
                 assert idx.dirty == 0
+
+    def test_dirty_remove_nonexistent_single_no_increment(self, tmp_path):
+        """Removing a non-existent single key does not bump dirty."""
+        idx = ShardedIndex(ndim=32, path=tmp_path)
+        vec = np.random.rand(32).astype(np.float32)
+        idx.add(1, vec)
+        assert idx.dirty == 1
+
+        idx.remove(999)  # key doesn't exist
+        assert idx.dirty == 1  # unchanged
+
+    def test_dirty_remove_nonexistent_batch_no_increment(self, tmp_path):
+        """Removing non-existent batch keys does not bump dirty."""
+        idx = ShardedIndex(ndim=32, path=tmp_path)
+        vecs = np.random.rand(3, 32).astype(np.float32)
+        idx.add(list(range(3)), vecs)
+        assert idx.dirty == 3
+
+        idx.remove([99, 100, 101])  # none exist
+        assert idx.dirty == 3  # unchanged
+
+    def test_dirty_remove_partial_batch(self, tmp_path):
+        """Removing a batch where only some keys exist counts only existing ones."""
+        idx = ShardedIndex(ndim=32, path=tmp_path)
+        vecs = np.random.rand(3, 32).astype(np.float32)
+        idx.add(list(range(3)), vecs)
+        assert idx.dirty == 3
+
+        idx.remove([0, 1, 99])  # 2 exist, 1 doesn't
+        assert idx.dirty == 5  # 3 adds + 2 removes
 
     def test_dirty_read_only_always_zero(self, tmp_path):
         """Read-only indexes always return dirty=0."""

@@ -150,13 +150,15 @@ class NphdIndex(Index):
         """
         Remove vectors by key(s).
 
+        Only counts keys that actually exist toward the dirty counter.
+
         :param keys: Integer key(s) to remove
         :param kwargs: Additional arguments passed to parent Index.remove()
         """
         if isinstance(keys, (int, np.integer)):
-            n = 1
+            n = 1 if self.contains(keys) else 0
         else:
-            n = len(np.atleast_1d(np.asarray(keys)))
+            n = int(np.asarray(self.contains(np.atleast_1d(np.asarray(keys))), dtype=bool).sum())
         super().remove(keys, **kwargs)
         self._dirty += n
 

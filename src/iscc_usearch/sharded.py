@@ -1554,10 +1554,12 @@ class ShardedIndex:
         if self._config.get("multi"):
             raise ValueError("remove() requires multi=False")
         if self._is_single_key(keys):
-            self._dirty += 1
+            if self.contains(keys):
+                self._dirty += 1
             self._remove_single(keys, compact=compact)
         else:
-            self._dirty += len(self._normalize_batch_keys(keys))
+            keys_arr = self._normalize_batch_keys(keys)
+            self._dirty += int(np.asarray(self.contains(keys_arr), dtype=bool).sum())
             self._remove_batch(keys, compact=compact)
 
     def _remove_single(self, key: Any, *, compact: bool = False) -> None:
