@@ -252,7 +252,7 @@ dev = [
 requires-dist = [
     { name = "fastbloom-rs", specifier = ">=0.5.10" },
     { name = "loguru", specifier = ">=0.7.3" },
-    { name = "usearch-iscc", specifier = ">=2.23.6" },
+    { name = "usearch-iscc", specifier = ">=2.24.2" },
 ]
 
 [package.metadata.requires-dev]

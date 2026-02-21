@@ -39,7 +39,7 @@ classifiers = [
 dependencies = [
     "loguru>=0.7.3",
     "fastbloom-rs>=0.5.10",
-    "usearch-iscc>=2.23.6",  # >=2.23.6 required for native MetricKind.NPHD
+    "usearch-iscc>=2.24.2",
 ]
 
 [project.urls]
