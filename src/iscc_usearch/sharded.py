@@ -440,6 +440,9 @@ class ShardedIndex:
         # Amortized rotation check: skip O(n) serialized_length on every add
         self._adds_until_size_check: int = 0
 
+        # Dirty write counter: number of key mutations since last save/reset
+        self._dirty: int = 0
+
         # Create directory if needed (skip for read-only to avoid side-effects)
         if not self._read_only:
             self._path.mkdir(parents=True, exist_ok=True)
@@ -600,6 +603,7 @@ class ShardedIndex:
 
         # Amortized rotation check: only compute serialized_length when countdown expires
         count_added = len(np.atleast_1d(result))
+        self._dirty += count_added
         self._adds_until_size_check -= count_added
         if self._adds_until_size_check <= 0:
             size = self._active_shard.serialized_length
@@ -1089,16 +1093,16 @@ class ShardedIndex:
         elif tombstone_path.exists():
             tombstone_path.unlink()
 
-        if self._active_shard is None or len(self._active_shard) == 0:
-            return
+        if self._active_shard is not None and len(self._active_shard) > 0:
+            shard_path = self._get_active_shard_path()
+            with timer(f"ShardedIndex save {shard_path.name}"):
+                with atomic_write(shard_path) as tmp:
+                    self._active_shard.save(str(tmp), progress=progress)
+            self._active_shard_path = shard_path
+            # Invalidate cache since new shard file may have been created
+            self._invalidate_shard_cache()
 
-        shard_path = self._get_active_shard_path()
-        with timer(f"ShardedIndex save {shard_path.name}"):
-            with atomic_write(shard_path) as tmp:
-                self._active_shard.save(str(tmp), progress=progress)
-        self._active_shard_path = shard_path
-        # Invalidate cache since new shard file may have been created
-        self._invalidate_shard_cache()
+        self._dirty = 0
 
     def rebuild_bloom(self, save: bool = True, log_progress: bool = True) -> int:
         """Rebuild bloom filter from all existing keys.
@@ -1513,6 +1517,21 @@ class ShardedIndex:
         return 0
 
     @property
+    def dirty(self) -> int:
+        """Number of unsaved key mutations since last save/reset.
+
+        Counts individual keys added or removed. Useful for implementing
+        caller-driven flush policies (e.g. "save every N writes").
+
+        Always returns 0 for read-only indexes.
+
+        :return: Count of key mutations since last persistence operation.
+        """
+        if self._read_only:
+            return 0
+        return self._dirty
+
+    @property
     def tombstone_count(self) -> int:
         """Number of pending tombstones (view shard deletions awaiting compaction)."""
         return len(self._tombstones)
@@ -1535,8 +1554,12 @@ class ShardedIndex:
         if self._config.get("multi"):
             raise ValueError("remove() requires multi=False")
         if self._is_single_key(keys):
+            if self.contains(keys):
+                self._dirty += 1
             self._remove_single(keys, compact=compact)
         else:
+            keys_arr = self._normalize_batch_keys(keys)
+            self._dirty += int(np.asarray(self.contains(keys_arr), dtype=bool).sum())
             self._remove_batch(keys, compact=compact)
 
     def _remove_single(self, key: Any, *, compact: bool = False) -> None:
@@ -1647,8 +1670,9 @@ class ShardedIndex:
         self._tombstones.clear()
         self._needs_compact = False
 
-        # Reset amortized size check
+        # Reset amortized size check and dirty counter
         self._adds_until_size_check = 0
+        self._dirty = 0
 
         # Invalidate shard cache
         self._invalidate_shard_cache()
