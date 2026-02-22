@@ -118,6 +118,13 @@ rebuilds view shards to physically remove tombstoned and cross-shard duplicate e
 Compaction is optional — tombstoned entries are already filtered from reads. Compact when disk
 space matters or tombstone density is high.
 
+### Dirty counter
+
+All writable indexes expose a `dirty` property that counts unsaved key mutations (adds and
+removes). It resets to 0 on `save()` and `reset()` but not on shard rotation — bloom filter and
+tombstone state may still need flushing. Read-only indexes always return 0. Use `dirty` to
+implement caller-driven flush policies (e.g., "save every 1000 writes").
+
 ### Additional operations
 
 - `upsert()` provides insert-or-update semantics by calling `remove()` then `add()`. Batch upsert

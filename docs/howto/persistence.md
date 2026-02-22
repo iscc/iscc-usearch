@@ -84,6 +84,22 @@ The copy is independent. Modifying one does not affect the other.
 | `restore()` | Either    | Either        | Either   | Convenience dispatcher         |
 | `copy()`    | High      | Instant       | Yes      | Fork an index for experiments  |
 
+## Dirty counter
+
+`NphdIndex` tracks unsaved mutations via the `dirty` property. It increments on each `add()` or
+`remove()` call and resets to 0 on `save()`, `load()`, `view()`, and `reset()`:
+
+```python
+index = NphdIndex(max_dim=256)
+index.add(1, vec)
+print(index.dirty)  # 1
+
+index.save("my_index.usearch")
+print(index.dirty)  # 0
+```
+
+Use `dirty` to implement caller-driven flush policies (e.g., "save every N writes").
+
 ## Metric persistence
 
 The native `MetricKind.NPHD` metric is correctly serialized and deserialized by usearch-iscc.

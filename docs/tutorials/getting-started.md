@@ -10,7 +10,7 @@ index to disk.
 
 ## Prerequisites
 
-- Python 3.12 or later
+- Python 3.10 or later
 - `pip` or [`uv`](https://docs.astral.sh/uv/)
 
 ## Install

@@ -11,8 +11,8 @@ Index classes: NphdIndex (variable-length, in-memory), ShardedIndex (any metric,
 ShardedNphdIndex (variable-length, disk-backed), and 128-bit UUID key variants of each.
 
 Sharded indexes support read_only mode (all shards memory-mapped, writes blocked), add_once()
-for skip-if-exists semantics (first-write-wins), and reset() for releasing resources without
-deleting files on disk.
+for skip-if-exists semantics (first-write-wins), reset() for releasing resources without
+deleting files on disk, and a dirty counter for tracking unsaved mutations.
 
 Install: `pip install iscc-usearch`
 

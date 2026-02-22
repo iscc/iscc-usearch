@@ -7,12 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `dirty` write counter property on `NphdIndex` and `ShardedIndex` for caller-driven flush policies
+    ([#16](https://github.com/iscc/iscc-usearch/issues/16))
+
 ### Fixed
 
 - Accept `bytes` and `bytearray` in `pad_vectors()` per-element loop ([#14](https://github.com/iscc/iscc-usearch/issues/14))
 
 ### Changed
 
+- Reduce logging verbosity: default `timer` level from INFO to DEBUG, reserve INFO for aggregate
+    summaries like shard load/save counts ([#15](https://github.com/iscc/iscc-usearch/issues/15))
+- Bump `usearch-iscc` minimum version to 2.24.2
 - Move docs `overrides` directory into `docs/overrides` for cleaner project root
 - Make `shard_size`, `connectivity`, `expansion_add`, `expansion_search` explicit parameters on
     `ShardedNphdIndex.__init__` (fixes griffe doc generation warnings)

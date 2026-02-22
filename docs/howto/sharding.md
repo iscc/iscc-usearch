@@ -168,12 +168,33 @@ The default is 1 GB. Smaller shards keep insert throughput high but increase que
 more shards need to be searched. See [Sharding design](../explanation/sharding-design.md) for
 trade-off details.
 
+## Track unsaved changes with `dirty`
+
+The `dirty` property counts unsaved key mutations (adds and removes). Use it to implement
+caller-driven flush policies:
+
+```python
+flush_threshold = 1000
+
+for i, vec in enumerate(vectors):
+    index.add(i, vec)
+    if index.dirty >= flush_threshold:
+        index.save()  # resets dirty to 0
+        print(f"Flushed at {i + 1} vectors")
+
+print(index.dirty)  # Mutations since last save
+```
+
+`dirty` resets to 0 on `save()` and `reset()`. Shard rotation does not reset it — unsaved
+bloom filter and tombstone state may still need flushing. Read-only indexes always return 0.
+
 ## Properties
 
 ```python
 print(index.size)  # Logical vector count (excludes tombstoned entries)
 print(index.shard_count)  # Number of shard files
 print(index.max_dim)  # Maximum bits per vector
+print(index.dirty)  # Unsaved key mutations since last save
 
 # Lazy iterators (memory-efficient)
 for key in index.keys:

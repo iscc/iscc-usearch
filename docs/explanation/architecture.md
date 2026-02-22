@@ -84,9 +84,9 @@ For most ISCC workloads, use **`NphdIndex`** for datasets that fit in RAM, or
 For `NphdIndex`, the application calls `add(key, vector)`, which pads the vector (prepends a length
 byte, zero-fills to `max_dim + 8` bits) via `pad_vectors` and stores it in the USearch HNSW graph.
 
-For `ShardedNphdIndex`, the write path adds bloom filter updates and automatic shard rotation: once
-the active shard exceeds `shard_size`, it is saved to disk and reopened as a memory-mapped view
-while a fresh active shard is created.
+For `ShardedNphdIndex`, the write path adds bloom filter updates, `dirty` counter increments, and
+automatic shard rotation: once the active shard exceeds `shard_size`, it is saved to disk and
+reopened as a memory-mapped view while a fresh active shard is created.
 
 ### Delete path (remove)
 

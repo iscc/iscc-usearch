@@ -136,7 +136,11 @@ print(matches.keys)
 print(index.size)  # Logical vector count (excludes tombstoned entries)
 print(index.shard_count)  # Number of shard files
 print(index.max_dim)  # Maximum bits per vector
+print(index.dirty)  # Unsaved key mutations since last save
 ```
+
+The `dirty` property tracks unsaved mutations. Use it to implement flush policies like "save every
+N writes". It resets to 0 on `save()` and `reset()`.
 
 ## Shard directory layout
 
