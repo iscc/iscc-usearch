@@ -36,7 +36,7 @@ nav = [
     ]},
     { "Reference" = [
         "reference/api.md",
-        "reference/agents.md",
+        "reference/for-coding-agents.md",
     ]},
     { "Development" = [
         "development/contributing.md",
