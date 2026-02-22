@@ -22,6 +22,7 @@ PAGES = [
     "explanation/sharding-design.md",
     "explanation/performance.md",
     "reference/api.md",
+    "reference/agents.md",
     "development/contributing.md",
 ]
 
