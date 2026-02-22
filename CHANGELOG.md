@@ -7,14 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-02-22
+
 ### Added
 
 - `dirty` write counter property on `NphdIndex` and `ShardedIndex` for caller-driven flush policies
     ([#16](https://github.com/iscc/iscc-usearch/issues/16))
+- "For Coding Agents" reference page in documentation with architecture map, decision dispatch tables,
+    constraints catalog, and task recipes
 
 ### Fixed
 
 - Accept `bytes` and `bytearray` in `pad_vectors()` per-element loop ([#14](https://github.com/iscc/iscc-usearch/issues/14))
+- Only count existing keys in `dirty` counter on `remove()` ([#16](https://github.com/iscc/iscc-usearch/issues/16))
+- Generate API reference markdown from source for `llms-full.txt` instead of raw mkdocstrings directives
 
 ### Changed
 
@@ -148,3 +154,4 @@ Initial release of iscc-usearch.
 [0.3.0]: https://github.com/iscc/iscc-usearch/compare/0.2.1...0.3.0
 [0.4.0]: https://github.com/iscc/iscc-usearch/compare/0.3.0...0.4.0
 [0.5.0]: https://github.com/iscc/iscc-usearch/compare/0.4.0...0.5.0
+[0.6.0]: https://github.com/iscc/iscc-usearch/compare/0.5.0...0.6.0
