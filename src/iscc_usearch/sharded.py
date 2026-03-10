@@ -731,7 +731,10 @@ class ShardedIndex:
             raise ValueError("`count` must be >= 1")
 
         vectors = np.asarray(vectors)
-        is_single = vectors.ndim == 1
+        # Treat batch_size=1 as single query — usearch returns 1D Matches
+        # for single-row batches, so all downstream merge/filter/truncate
+        # logic must use the single-query path (see issue #22).
+        is_single = vectors.ndim == 1 or (vectors.ndim == 2 and vectors.shape[0] == 1)
 
         view_results: Matches | BatchMatches | None = None
         active_results: Matches | BatchMatches | None = None

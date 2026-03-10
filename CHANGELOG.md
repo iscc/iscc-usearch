@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-03-10
+
+### Fixed
+
+- `ShardedIndex.search()` raises `AxisError` when merging results from view and active shards
+    with a single-row 2D query of shape `(1, ndim)` ([#22](https://github.com/iscc/iscc-usearch/issues/22))
+
 ## [0.6.0] - 2026-02-22
 
 ### Added
