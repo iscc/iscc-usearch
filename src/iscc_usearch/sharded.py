@@ -1553,6 +1553,25 @@ class ShardedIndex:
         """Number of pending tombstones (view shard deletions awaiting compaction)."""
         return len(self._tombstones)
 
+    def stats(self) -> dict[str, Any]:
+        """Return index statistics for monitoring and diagnostics."""
+        return {
+            "total_vectors": len(self),
+            "dimensions": self.ndim,
+            "metric": str(self.metric_kind),
+            "dtype": str(self.dtype),
+            "connectivity": self.connectivity,
+            "view_shards": len(self._viewed_indexes),
+            "active_shard_vectors": len(self._active_shard) if self._active_shard else 0,
+            "shard_size": self._shard_size,
+            "dirty": self.dirty,
+            "tombstones": self.tombstone_count,
+            "bloom_filter": self._bloom is not None,
+            "memory_usage": self.memory_usage,
+            "path": str(self._path),
+            "read_only": self._read_only,
+        }
+
     # === CRUD Operations ===
 
     def remove(self, keys: Any, *, compact: bool = False) -> None:

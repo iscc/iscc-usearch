@@ -182,6 +182,41 @@ def test_capacity_property(tmp_path):
     assert index.capacity > 0
 
 
+def test_stats(tmp_path):
+    """Test stats() returns structured index summary."""
+    index = ShardedIndex(ndim=64, path=tmp_path, connectivity=32)
+    index.add(list(range(10)), np.random.rand(10, 64).astype(np.float32))
+
+    s = index.stats()
+
+    assert s["total_vectors"] == 10
+    assert s["dimensions"] == 64
+    assert s["connectivity"] == 32
+    assert s["view_shards"] == 0
+    assert s["active_shard_vectors"] == 10
+    assert s["dirty"] == 10
+    assert s["tombstones"] == 0
+    assert s["bloom_filter"] is True
+    assert s["memory_usage"] > 0
+    assert s["path"] == str(tmp_path)
+    assert s["read_only"] is False
+    assert "metric" in s
+    assert "dtype" in s
+    assert "shard_size" in s
+
+
+def test_stats_with_view_shards(tmp_path):
+    """Test stats() reflects view shards after rotation."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=100)
+    for i in range(50):
+        index.add(i, np.random.rand(64).astype(np.float32))
+
+    s = index.stats()
+
+    assert s["view_shards"] > 0
+    assert s["total_vectors"] == 50
+
+
 def test_repr(tmp_path):
     """Test __repr__ method."""
     index = ShardedIndex(ndim=64, path=tmp_path)

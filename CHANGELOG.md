@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `ShardedIndex.stats()` method returning structured index summary for monitoring and diagnostics
+    ([#13](https://github.com/iscc/iscc-usearch/issues/13))
+
 ### Fixed
 
 - Batch `add()` with duplicate keys no longer corrupts index state. Duplicate keys (within the
