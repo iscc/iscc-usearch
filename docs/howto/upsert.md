@@ -135,16 +135,22 @@ duplicates. Use it for idempotent batch loads where the first write should win.
 
 ## When to use add vs upsert vs add_once
 
-| Scenario                          | Use          | Available on    |
-| --------------------------------- | ------------ | --------------- |
-| Keys are guaranteed unique        | `add()`      | All indexes     |
-| Keys may repeat, update vectors   | `upsert()`   | All indexes     |
-| Keys may repeat, keep first write | `add_once()` | Sharded indexes |
-| Bulk initial load                 | `add()`      | All indexes     |
-| Incremental updates               | `upsert()`   | All indexes     |
-| Idempotent batch load (sharded)   | `add_once()` | Sharded indexes |
+| Scenario                           | Use          | Available on    |
+| ---------------------------------- | ------------ | --------------- |
+| Keys are guaranteed unique         | `add()`      | All indexes     |
+| Keys may repeat, update vectors    | `upsert()`   | All indexes     |
+| Keys may repeat, keep first write  | `add_once()` | Sharded indexes |
+| Bulk initial load with unique keys | `add()`      | All indexes     |
+| Incremental updates                | `upsert()`   | All indexes     |
+| Idempotent batch load (sharded)    | `add_once()` | Sharded indexes |
 
 !!! note
 
     `upsert()` and `add_once()` both require explicit keys. Passing `keys=None` raises
     `ValueError`. The number of keys and vectors must match, or `ValueError` is raised.
+
+!!! note "Duplicate keys with add"
+
+    `add()` is fastest when keys are already unique. In `multi=False` indexes, duplicate keys are
+    silently skipped. In sharded indexes, `add()` only checks duplicates within the active shard;
+    use `add_once()` for cross-shard first-write-wins behavior.

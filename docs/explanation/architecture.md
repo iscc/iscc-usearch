@@ -100,7 +100,7 @@ entries and reclaim disk space.
 
 The query is padded and searched across all shards in parallel (active shard in RAM plus
 memory-mapped view shards). Each shard invokes the NPHD metric for distance computations, returning
-distances in [0.0, 1.0]. Results are merged via argsort and top-k selection. When tombstones or
+distances from `0.0` to `1.0`. Results are merged via argsort and top-k selection. When tombstones or
 cross-shard duplicates exist, view shard results are oversampled and filtered to exclude stale
 entries before merging.
 

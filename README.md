@@ -30,7 +30,9 @@ structured multi-part keys that don't fit in a `uint64`.
 
 - **Bounded memory** - only one shard in RAM at a time, the rest memory-mapped
 - **Billions of vectors** - sharded indexes scale well beyond single-machine RAM
-- **Incremental writes** - append vectors without rebuilding the index
+- **Full CRUD** - add, remove, upsert, compact, and dirty-counter-driven flush across index variants
+- **Durable saves** - buffer-then-write persistence with atomic rename and stable-storage flushes
+- **Diagnostics** - `ShardedIndex.stats()` for structured monitoring snapshots
 - **Mixed bit-lengths** - 64-bit and 256-bit vectors coexist in the same index
 - **128-bit keys** - `bytes(16)` UUID keys when 64-bit integers are not enough
 - **Any distance metric** - user-defined metrics via USearch's plugin system

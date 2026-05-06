@@ -12,7 +12,8 @@ ShardedNphdIndex (variable-length, disk-backed), and 128-bit UUID key variants o
 
 Sharded indexes support read_only mode (all shards memory-mapped, writes blocked), add_once()
 for skip-if-exists semantics (first-write-wins), reset() for releasing resources without
-deleting files on disk, and a dirty counter for tracking unsaved mutations.
+deleting files on disk, a dirty counter for tracking unsaved mutations, durable saves, and
+stats() for structured monitoring snapshots.
 
 Install: `pip install iscc-usearch`
 

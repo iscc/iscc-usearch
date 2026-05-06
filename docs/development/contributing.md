@@ -118,5 +118,5 @@ Each patch is maintained on a separate branch to facilitate upstream merging:
     Skip duplicate keys silently in `add()` instead of erroring with partial commit
     ([iscc/usearch#6](https://github.com/iscc/usearch/issues/6))
 
-See the [Performance explanation](../explanation/performance.md) for details on the performance
+See the [Performance explanation](/explanation/performance/) for details on the performance
 patches.

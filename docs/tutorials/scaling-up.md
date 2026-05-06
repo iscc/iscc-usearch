@@ -137,10 +137,19 @@ print(index.size)  # Logical vector count (excludes tombstoned entries)
 print(index.shard_count)  # Number of shard files
 print(index.max_dim)  # Maximum bits per vector
 print(index.dirty)  # Unsaved key mutations since last save
+
+stats = index.stats()
+print(stats["total_vectors"])
+print(stats["view_shards"])
+print(stats["active_shard_vectors"])
+print(stats["memory_usage"])
 ```
 
 The `dirty` property tracks unsaved mutations. Use it to implement flush policies like "save every
 N writes". It resets to 0 on `save()` and `reset()`.
+
+Use `stats()` for monitoring and diagnostics when you need one structured snapshot instead of
+reading individual properties.
 
 ## Shard directory layout
 

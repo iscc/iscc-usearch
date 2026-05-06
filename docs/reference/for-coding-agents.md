@@ -92,11 +92,15 @@ via `save()`/constructor — they auto-load/view shards from the `path` director
 
 ### Which add method?
 
-| Method       | Existing key behavior                      | Duplicate keys in batch | keys=None | Requires multi=False |
-| ------------ | ------------------------------------------ | ----------------------- | :-------: | :------------------: |
-| `add()`      | Appends (multi=True) or replaces (usearch) | All added               |    Yes    |          No          |
-| `upsert()`   | Remove old + add new (last-write-wins)     | Last occurrence kept    |    No     |         Yes          |
-| `add_once()` | Silently skipped                           | First occurrence kept   |    No     |          No          |
+| Method       | Existing key behavior                                      | Duplicate keys in batch                             | keys=None | Requires multi=False |
+| ------------ | ---------------------------------------------------------- | --------------------------------------------------- | :-------: | :------------------: |
+| `add()`      | Skips duplicates in `multi=False`; appends in `multi=True` | Skipped in `multi=False`; all added in `multi=True` |    Yes    |          No          |
+| `upsert()`   | Remove old + add new (last-write-wins)                     | Last occurrence kept                                |    No     |         Yes          |
+| `add_once()` | Silently skipped across all shards                         | First occurrence kept                               |    No     |          No          |
+
+For sharded indexes, `add()` only checks duplicate keys within the active shard. It does not scan
+view shards. Use `add_once()` when keys may already exist across shard boundaries and first-write-wins
+semantics are required.
 
 ---
 
@@ -180,7 +184,7 @@ _tombstones.clear(), tombstones.npy deleted
 
 | Method            | Disk writes                                                 | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
 | ----------------- | ----------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
-| `add()`           | None (until rotation)                                       | `+= N`                  | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
+| `add()`           | None (until rotation)                                       | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
 | `remove()`        | None                                                        | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
 | `upsert()`        | None                                                        | Via remove + add        | Via remove + add           | Via add              | Via add                |
 | `add_once()`      | None                                                        | Via add (new keys only) | None                       | Via add              | Via add                |

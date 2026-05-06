@@ -55,6 +55,9 @@ for key, vec in zip(keys, vectors):
     index.add(key, vec)
 ```
 
+Duplicate keys within the active shard are silently skipped. Keys already saved in view shards are
+not checked by `add()`; use `add_once()` when loading data that may repeat across shard boundaries.
+
 When the active shard exceeds `shard_size`, it is saved to disk and reopened in view mode
 (read-only, memory-mapped). A new active shard is then created.
 
@@ -202,6 +205,20 @@ for key in index.keys:
 for vec in index.vectors:
     pass
 ```
+
+Use `stats()` when exporting monitoring or diagnostics:
+
+```python
+stats = index.stats()
+print(stats["total_vectors"])
+print(stats["view_shards"])
+print(stats["active_shard_vectors"])
+print(stats["dirty"])
+print(stats["memory_usage"])
+```
+
+The returned dictionary also includes `dimensions`, `metric`, `dtype`, `connectivity`,
+`shard_size`, `tombstones`, `bloom_filter`, `path`, and `read_only`.
 
 ## 128-bit key variants
 
