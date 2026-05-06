@@ -153,13 +153,8 @@ def test_bloom_loaded_on_load(tmp_path: Path):
     assert not idx2.contains(9999)
 
 
-def test_bloom_missing_file_disables_bloom(tmp_path: Path):
-    """Test that missing bloom file disables bloom in load mode (legacy index).
-
-    This tests the regression where loading a legacy index without a bloom.isbf
-    file would create an empty bloom filter, causing all lookups to return
-    False/None because an empty bloom filter rejects all keys.
-    """
+def test_bloom_missing_file_rebuilds_on_load(tmp_path: Path):
+    """Test that missing bloom file triggers automatic rebuild from shard keys."""
     # Create and save index with bloom filter
     idx = ShardedIndex(ndim=32, path=tmp_path)
     vectors = np.random.rand(10, 32).astype(np.float32)
@@ -167,20 +162,21 @@ def test_bloom_missing_file_disables_bloom(tmp_path: Path):
     idx.add(keys, vectors)
     idx.save()
 
-    # Delete bloom file to simulate legacy index
+    # Delete bloom file to simulate legacy index or crash recovery
     bloom_path = tmp_path / "bloom.isbf"
     bloom_path.unlink()
 
-    # Load in load mode (default) - should work without bloom
+    # Load — bloom should be rebuilt automatically from shard keys
     idx2 = ShardedIndex(ndim=32, path=tmp_path)
-    assert idx2._bloom is None  # Bloom should be disabled, not empty
+    assert idx2._bloom is not None
+    assert idx2._bloom.count == 10
 
-    # Critical: lookups should still work by scanning shards
+    # Lookups work correctly via rebuilt bloom
     assert len(idx2) == 10
-    assert idx2.contains(0)  # Must find existing keys
+    assert idx2.contains(0)
     assert idx2.contains(5)
     assert idx2.contains(9)
-    assert not idx2.contains(999)  # Non-existent key
+    assert not idx2.contains(999)
 
     # get() should also work
     result = idx2.get(5)
@@ -188,6 +184,9 @@ def test_bloom_missing_file_disables_bloom(tmp_path: Path):
 
     result = idx2.get(999)
     assert result is None
+
+    # Bloom file should be persisted after rebuild
+    assert bloom_path.exists()
 
 
 def test_bloom_disabled_index_works_normally(tmp_path: Path):
