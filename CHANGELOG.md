@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Index saves use buffer-then-write strategy for lower IOPS and power-loss durability.
+    Serializes to an in-memory buffer, writes it to disk via `os.write()`, flushes with `fdatasync`,
+    then atomically renames. Reduces write syscalls from ~3N to 3 (where N = number of vectors)
+    and adds durability guarantees that were previously absent.
+
 ## [0.6.1] - 2026-03-10
 
 ### Fixed

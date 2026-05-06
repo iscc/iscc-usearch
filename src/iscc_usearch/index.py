@@ -1,11 +1,15 @@
-"""Drop-in replacement for usearch.index.Index with upsert support."""
+"""Drop-in replacement for usearch.index.Index with upsert support and durable saves."""
 
+import os
 from collections.abc import Sequence
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 from numpy.typing import NDArray
 from usearch.index import Index as _Index, ScalarKind
+
+from iscc_usearch.utils import durable_write
 
 __all__ = ["Index"]
 
@@ -14,7 +18,23 @@ _UUID_DTYPE = np.dtype("V16")
 
 
 class Index(_Index):
-    """Index with upsert support."""
+    """Index with upsert support and durable file saves."""
+
+    def save(self, path_or_buffer=None, progress=None):
+        """Save index to file or buffer.
+
+        When saving to a file, serializes to an in-memory buffer first, then writes
+        durably to disk for minimal IOPS and power-loss safety.
+
+        :param path_or_buffer: File path to save to, or None to return serialized bytes.
+        :param progress: Optional progress callback.
+        :return: Serialized buffer when saving to memory, None when saving to file.
+        """
+        if path_or_buffer is not None:
+            data = self._compiled.save_index_to_buffer(progress)
+            durable_write(data, Path(os.fspath(path_or_buffer)))
+            return None
+        return super().save(progress=progress)
 
     def upsert(
         self,
