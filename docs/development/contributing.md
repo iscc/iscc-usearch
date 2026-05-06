@@ -117,6 +117,9 @@ Each patch is maintained on a separate branch to facilitate upstream merging:
 - [`fix-add-skip-duplicates`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-add-skip-duplicates) —
     Skip duplicate keys silently in `add()` instead of erroring with partial commit
     ([iscc/usearch#6](https://github.com/iscc/usearch/issues/6))
+- [`feat/save-release-gil`](https://github.com/iscc/usearch/compare/unum-cloud:main...feat/save-release-gil) —
+    Opt-in GIL release for `save()` to allow background serialization without blocking async event loops
+    ([iscc/usearch#7](https://github.com/iscc/usearch/issues/7))
 
 See the [Performance explanation](/explanation/performance/) for details on the performance
 patches.
