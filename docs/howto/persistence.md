@@ -13,7 +13,9 @@ This guide shows how to save, load, and memory-map `NphdIndex` instances.
 index.save("my_index.usearch")
 ```
 
-This writes the full index (HNSW graph and vectors) to a single file.
+This serializes the index to an in-memory buffer, writes it to disk via `os.write()`,
+flushes to stable storage with `fdatasync`, then atomically renames the temp file into place.
+The result is both atomic (no partial files on crash) and durable (data survives power loss).
 
 ## Load an index from disk
 

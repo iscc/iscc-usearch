@@ -1102,8 +1102,7 @@ class ShardedIndex:
 
         shard_path = self._get_active_shard_path()
         with timer(f"ShardedIndex save {shard_path.name}"):
-            with atomic_write(shard_path) as tmp:
-                self._active_shard.save(str(tmp), progress=progress)
+            self._active_shard.save(str(shard_path), progress=progress)
         self._active_shard_path = shard_path
         # Invalidate cache since new shard file may have been created
         self._invalidate_shard_cache()
@@ -1262,9 +1261,7 @@ class ShardedIndex:
                 new_shard = self._create_shard()
                 new_shard.add(self._shard_batch_keys(live_keys), live_vectors)
 
-                compact_path = shard_path.with_suffix(".usearch.compact")
-                new_shard.save(str(compact_path))
-                os.replace(compact_path, shard_path)
+                new_shard.save(str(shard_path))
 
                 viewed = self._restore_shard(shard_path, view=True)
                 if viewed is not None:  # pragma: no branch
@@ -1860,8 +1857,7 @@ class ShardedIndex:
 
         # Save current active shard
         with timer(f"ShardedIndex rotate save {shard_path.name}"):
-            with atomic_write(shard_path) as tmp:
-                self._active_shard.save(str(tmp))
+            self._active_shard.save(str(shard_path))
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
         # Invalidate cache since new shard file was created

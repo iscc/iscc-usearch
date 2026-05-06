@@ -1,6 +1,7 @@
 """Utility functions for iscc-usearch."""
 
 import os
+import sys
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -8,7 +9,10 @@ from pathlib import Path
 from loguru import logger
 
 
-__all__ = ["atomic_write", "timer"]
+__all__ = ["atomic_write", "durable_write", "timer"]
+
+_fdatasync = getattr(os, "fdatasync", os.fsync)
+_IS_WIN = sys.platform == "win32"
 
 
 @contextmanager
@@ -29,6 +33,40 @@ def atomic_write(target):
         yield tmp
         if tmp.exists():
             os.replace(tmp, target)
+    finally:
+        if tmp.exists():
+            tmp.unlink()
+
+
+def durable_write(data, target):
+    """Write data to target path atomically with power-loss durability.
+
+    Writes all bytes to a temporary sibling file (looping on short writes),
+    flushes to stable storage with fdatasync, atomically renames to the target
+    path, then syncs the parent directory (POSIX) so the rename itself is durable.
+
+    :param data: Bytes-like data to write.
+    :param target: Final destination path (str or Path).
+    """
+    target = Path(target)
+    tmp = target.parent / (target.name + ".tmp")
+    try:
+        flags = os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0)
+        fd = os.open(str(tmp), flags, 0o644)
+        try:
+            mv = memoryview(data)
+            while mv:
+                mv = mv[os.write(fd, mv) :]
+            _fdatasync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, target)
+        if not _IS_WIN:
+            dir_fd = os.open(str(target.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
     finally:
         if tmp.exists():
             tmp.unlink()

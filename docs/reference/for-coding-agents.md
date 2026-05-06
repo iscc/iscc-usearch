@@ -20,7 +20,7 @@ Tables and code over prose. Terminology matches the codebase exactly.
 | `src/iscc_usearch/sharded.py`      | `ShardedIndex`, `ShardedIndex128`, `_UuidKeyMixin`, lazy iterators, bloom integration |
 | `src/iscc_usearch/sharded_nphd.py` | `ShardedNphdIndex`, `ShardedNphdIndex128`, `ShardedNphdIndexedVectors`                |
 | `src/iscc_usearch/bloom.py`        | `ScalableBloomFilter` — chained bloom filter with persistence                         |
-| `src/iscc_usearch/utils.py`        | `timer`, `atomic_write`                                                               |
+| `src/iscc_usearch/utils.py`        | `timer`, `atomic_write`, `durable_write`                                              |
 
 ### Class hierarchy
 
