@@ -27,7 +27,7 @@ from usearch.index import (
 )
 
 from iscc_usearch.bloom import ScalableBloomFilter
-from iscc_usearch.utils import atomic_write, timer
+from iscc_usearch.utils import atomic_write, durable_write, timer
 
 __all__ = ["ShardedIndex", "ShardedIndex128", "ShardedIndexedKeys", "ShardedIndexedVectors"]
 
@@ -1085,42 +1085,30 @@ class ShardedIndex:
                 "ShardedIndex.save() does not accept a path argument. "
                 "Files are saved to the directory specified at construction time."
             )
-        # Save bloom filter if it exists
-        if self._bloom is not None:
-            bloom_path = self._path / BLOOM_FILENAME
-            with timer("ShardedIndex save bloom filter", level="INFO"):
-                self._bloom.save(bloom_path)
+        # Persist bloom → shard → tombstones (safe ordering for crash recovery:
+        # shard must be durable before tombstone removals become visible)
+        self._persist_bloom()
 
-        # Save tombstones (also serves as the _needs_compact persistence flag:
-        # file exists → filtering needed on next load, even if tombstones are empty)
-        tombstone_path = self._path / TOMBSTONE_FILENAME
-        if self._tombstones or self._needs_compact:
-            with atomic_write(tombstone_path) as tmp:
-                with open(tmp, "wb") as f:
-                    arr = np.array(sorted(self._tombstones), dtype=self._key_dtype)
-                    np.save(f, arr)
-        elif tombstone_path.exists():
-            tombstone_path.unlink()
+        if self._active_shard is not None and len(self._active_shard) > 0:
+            shard_path = self._get_active_shard_path()
+            active_count = len(self._active_shard)
+            with timer(
+                f"ShardedIndex save {shard_path.name} ({active_count:,} vectors)",
+                log_start=True,
+                level="INFO",
+            ):
+                data = self._active_shard.save(progress=progress)
+                durable_write(data, shard_path)
+            self._active_shard_path = shard_path
+            self._invalidate_shard_cache()
 
-        if self._active_shard is None or len(self._active_shard) == 0:
-            self._dirty = 0
-            return
+        self._persist_tombstones()
 
-        shard_path = self._get_active_shard_path()
-        active_count = len(self._active_shard)
-        with timer(
-            f"ShardedIndex save {shard_path.name} ({active_count:,} vectors)",
-            log_start=True,
-            level="INFO",
-        ):
-            self._active_shard.save(str(shard_path), progress=progress)
-        self._active_shard_path = shard_path
-        # Invalidate cache since new shard file may have been created
-        self._invalidate_shard_cache()
         from loguru import logger
 
         num_shards = len(self._discover_shards())
-        logger.info(f"Saved {num_shards} shard(s) to {self._path}")
+        if num_shards:
+            logger.info(f"Saved {num_shards} shard(s) to {self._path}")
         self._dirty = 0
 
     def rebuild_bloom(self, save: bool = True, log_progress: bool = True) -> int:
@@ -1173,11 +1161,8 @@ class ShardedIndex:
         if log_progress:
             logger.info(f"Bloom filter rebuilt with {count:,} keys")
 
-        # Save if requested
         if save:
-            bloom_path = self._path / BLOOM_FILENAME
-            with timer("ShardedIndex save bloom filter"):
-                self._bloom.save(bloom_path)
+            self._persist_bloom()
 
         return count
 
@@ -1272,7 +1257,8 @@ class ShardedIndex:
                 new_shard = self._create_shard()
                 new_shard.add(self._shard_batch_keys(live_keys), live_vectors)
 
-                new_shard.save(str(shard_path))
+                shard_data = new_shard.save()
+                durable_write(shard_data, shard_path)
 
                 viewed = self._restore_shard(shard_path, view=True)
                 if viewed is not None:  # pragma: no branch
@@ -1382,6 +1368,11 @@ class ShardedIndex:
         self._config["expansion_add"] = last_shard.expansion_add
         self._config["expansion_search"] = last_shard.expansion_search
         self._config["multi"] = last_shard.multi
+
+        # Rebuild bloom filter if missing or corrupt but shards exist
+        if self._use_bloom and self._bloom is None and not self._read_only:
+            logger.warning("Bloom filter missing — rebuilding from shard keys")
+            self.rebuild_bloom(save=True)
 
     @staticmethod
     def metadata(path: str | os.PathLike) -> dict | None:
@@ -1798,13 +1789,18 @@ class ShardedIndex:
         in sync with index contents. The _use_bloom flag only controls whether
         to USE the bloom filter for fast rejection in lookups.
 
-        Returns None when no bloom file exists. Call rebuild_bloom() to create
-        a bloom filter for existing indexes that don't have one.
+        Returns None when no bloom file exists or if the file is corrupt.
         """
+        from loguru import logger
+
         bloom_path = self._path / BLOOM_FILENAME
         if bloom_path.exists():
-            with timer("ShardedIndex load bloom filter", level="INFO"):
-                return ScalableBloomFilter.load(bloom_path)
+            try:
+                with timer("ShardedIndex load bloom filter", level="INFO"):
+                    return ScalableBloomFilter.load(bloom_path)
+            except Exception:
+                logger.warning(f"Corrupt bloom filter at {bloom_path} — will rebuild")
+                return None
         return None
 
     def _restore_shard(self, path: Path, view: bool) -> Index | None:
@@ -1873,6 +1869,28 @@ class ShardedIndex:
         else:
             self._adds_until_size_check = 1
 
+    def _persist_bloom(self) -> None:
+        """Save bloom filter to disk if it exists."""
+        if self._bloom is not None:
+            bloom_path = self._path / BLOOM_FILENAME
+            with timer("ShardedIndex save bloom filter", level="INFO"):
+                self._bloom.save(bloom_path)
+
+    def _persist_tombstones(self) -> None:
+        """Save tombstones to disk.
+
+        File presence also serves as the _needs_compact persistence flag:
+        file exists -> filtering needed on next load, even if tombstones are empty.
+        """
+        tombstone_path = self._path / TOMBSTONE_FILENAME
+        if self._tombstones or self._needs_compact:
+            with atomic_write(tombstone_path) as tmp:
+                with open(tmp, "wb") as f:
+                    arr = np.array(sorted(self._tombstones), dtype=self._key_dtype)
+                    np.save(f, arr)
+        elif tombstone_path.exists():
+            tombstone_path.unlink()
+
     def _rotate_shard(self) -> None:
         """Save current shard and create new one."""
         if self._active_shard is None:
@@ -1885,14 +1903,20 @@ class ShardedIndex:
         else:
             shard_path = self._get_shard_path(self._get_next_shard_number())
 
-        # Save current active shard
+        # Persist bloom → shard → tombstones (safe ordering for crash recovery:
+        # shard must be durable before tombstone removals become visible)
+        self._persist_bloom()
+
         active_count = len(self._active_shard)
         with timer(
             f"ShardedIndex rotate {shard_path.name} ({active_count:,} vectors)",
             log_start=True,
             level="INFO",
         ):
-            self._active_shard.save(str(shard_path))
+            data = self._active_shard.save()
+            durable_write(data, shard_path)
+
+        self._persist_tombstones()
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
         # Invalidate cache since new shard file was created

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Shard rotation, `save()`, and `compact()` bypass the durable write path — all three called
+    `usearch.index.Index.save(path)` directly (no temp file, no fsync, no atomic rename). All
+    writable shard saves now go through buffer serialization + `durable_write`
+    ([#26](https://github.com/iscc/iscc-usearch/issues/26))
+
+### Changed
+
+- Persistence ordering during `save()` and shard rotation is now bloom → shard → tombstones.
+    Tombstone removals only become visible after the shard data they depend on is durable,
+    preventing previously deleted keys from reappearing after a crash
+- Missing or corrupt bloom filter files are automatically rebuilt from shard keys on load
+    instead of silently disabling bloom lookups
+
 ## [0.7.0] - 2026-05-06
 
 ### Added

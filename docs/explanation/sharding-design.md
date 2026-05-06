@@ -38,11 +38,14 @@ stateDiagram-v2
 
 When the active shard exceeds the configured `shard_size`, it is:
 
-1. Saved to disk as `shard_NNN.usearch`.
-1. Reopened in view mode (memory-mapped, read-only).
+1. Bloom filter and shard file saved durably (buffer → fdatasync → atomic rename).
+1. Tombstones persisted after the shard is durable.
+1. Shard reopened in view mode (memory-mapped, read-only).
 1. Replaced by a fresh, empty active shard.
 
-This rotation resets the HNSW insert curve and keeps throughput consistent.
+This rotation resets the HNSW insert curve and keeps throughput consistent. The
+bloom → shard → tombstones ordering ensures that tombstone removals only become visible after
+the shard data they depend on is safely on disk.
 
 ## Bloom filter integration
 
@@ -67,7 +70,8 @@ The bloom filter is:
 
 - Persisted alongside shard files as `bloom.isbf`.
 - Updated automatically when vectors are added.
-- Rebuilt via `rebuild_bloom()` if corrupted or missing.
+- Rebuilt automatically on load if the file is missing or corrupt.
+- Rebuilt manually via `rebuild_bloom()` if needed.
 
 ## Search fan-out
 
