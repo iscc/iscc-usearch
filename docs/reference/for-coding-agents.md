@@ -158,6 +158,7 @@ semantics are required.
 - `contains()` / `get()` / `remove()` use bloom for fast rejection of non-existent keys.
 - False positives are expected (probabilistic). False negatives do not occur.
 - `rebuild_bloom()` creates a fresh filter from all existing keys.
+- Automatically rebuilt on load if the file is missing or corrupt (writable indexes only).
 - `compact()` calls `rebuild_bloom()` internally.
 - Bloom filter file: `bloom.isbf` in the shard directory.
 - Always loaded from disk if file exists, regardless of `_use_bloom` setting.
@@ -167,7 +168,7 @@ semantics are required.
 ```
 remove(key) → key added to _tombstones (in-memory set)
     ↓
-save() → _tombstones persisted as tombstones.npy
+save() → bloom persisted, then shard, then _tombstones as tombstones.npy
     ↓
 compact() → view shards rebuilt excluding tombstoned entries
     ↓
@@ -177,25 +178,27 @@ _tombstones.clear(), tombstones.npy deleted
 - `_needs_compact` flag: set when `add()` clears a tombstone (creating cross-shard duplicates).
 - `tombstones.npy` file existence signals `_needs_compact=True` on next load.
 - Tombstones are never written to bloom filter — bloom has no "remove" operation.
+- Tombstones are persisted **after** shard data so that tombstone removals only become
+    visible once the shard they depend on is durable.
 
 ---
 
 ## Side effects catalog
 
-| Method            | Disk writes                                                 | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
-| ----------------- | ----------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
-| `add()`           | None (until rotation)                                       | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
-| `remove()`        | None                                                        | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
-| `upsert()`        | None                                                        | Via remove + add        | Via remove + add           | Via add              | Via add                |
-| `add_once()`      | None                                                        | Via add (new keys only) | None                       | Via add              | Via add                |
-| `save()`          | `.usearch`, `bloom.isbf`, `tombstones.npy`                  | Reset to 0              | Persisted                  | Persisted            | No                     |
-| `load()`          | None                                                        | Reset to 0              | Loaded from `.npy`         | Loaded from `.isbf`  | No                     |
-| `view()`          | None                                                        | Reset to 0              | N/A (NphdIndex)            | N/A                  | No                     |
-| `reset()`         | None                                                        | Reset to 0              | Cleared                    | Cleared              | No                     |
-| `compact()`       | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy` | Reset to 0              | Cleared                    | Rebuilt              | No                     |
-| `search()`        | None                                                        | No change               | No change                  | None                 | No                     |
-| `get()`           | None                                                        | No change               | No change                  | None                 | No                     |
-| `rebuild_bloom()` | `bloom.isbf` (if `save=True`)                               | No change               | No change                  | Rebuilt from scratch | No                     |
+| Method            | Disk writes                                                             | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
+| ----------------- | ----------------------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
+| `add()`           | None (until rotation; rotation durably writes bloom, shard, tombstones) | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
+| `remove()`        | None                                                                    | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
+| `upsert()`        | None                                                                    | Via remove + add        | Via remove + add           | Via add              | Via add                |
+| `add_once()`      | None                                                                    | Via add (new keys only) | None                       | Via add              | Via add                |
+| `save()`          | `.usearch`, `bloom.isbf`, `tombstones.npy`                              | Reset to 0              | Persisted                  | Persisted            | No                     |
+| `load()`          | None                                                                    | Reset to 0              | Loaded from `.npy`         | Loaded from `.isbf`  | No                     |
+| `view()`          | None                                                                    | Reset to 0              | N/A (NphdIndex)            | N/A                  | No                     |
+| `reset()`         | None                                                                    | Reset to 0              | Cleared                    | Cleared              | No                     |
+| `compact()`       | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy`             | Reset to 0              | Cleared                    | Rebuilt              | No                     |
+| `search()`        | None                                                                    | No change               | No change                  | None                 | No                     |
+| `get()`           | None                                                                    | No change               | No change                  | None                 | No                     |
+| `rebuild_bloom()` | `bloom.isbf` (if `save=True`)                                           | No change               | No change                  | Rebuilt from scratch | No                     |
 
 ---
 
