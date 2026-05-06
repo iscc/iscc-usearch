@@ -1088,7 +1088,7 @@ class ShardedIndex:
         # Save bloom filter if it exists
         if self._bloom is not None:
             bloom_path = self._path / BLOOM_FILENAME
-            with timer("ShardedIndex save bloom filter"):
+            with timer("ShardedIndex save bloom filter", level="INFO"):
                 self._bloom.save(bloom_path)
 
         # Save tombstones (also serves as the _needs_compact persistence flag:
@@ -1107,7 +1107,12 @@ class ShardedIndex:
             return
 
         shard_path = self._get_active_shard_path()
-        with timer(f"ShardedIndex save {shard_path.name}"):
+        active_count = len(self._active_shard)
+        with timer(
+            f"ShardedIndex save {shard_path.name} ({active_count:,} vectors)",
+            log_start=True,
+            level="INFO",
+        ):
             self._active_shard.save(str(shard_path), progress=progress)
         self._active_shard_path = shard_path
         # Invalidate cache since new shard file may have been created
@@ -1779,7 +1784,7 @@ class ShardedIndex:
         """
         bloom_path = self._path / BLOOM_FILENAME
         if bloom_path.exists():
-            with timer("ShardedIndex load bloom filter"):
+            with timer("ShardedIndex load bloom filter", level="INFO"):
                 return ScalableBloomFilter.load(bloom_path)
         return None
 
@@ -1862,7 +1867,12 @@ class ShardedIndex:
             shard_path = self._get_shard_path(self._get_next_shard_number())
 
         # Save current active shard
-        with timer(f"ShardedIndex rotate save {shard_path.name}"):
+        active_count = len(self._active_shard)
+        with timer(
+            f"ShardedIndex rotate {shard_path.name} ({active_count:,} vectors)",
+            log_start=True,
+            level="INFO",
+        ):
             self._active_shard.save(str(shard_path))
         # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
