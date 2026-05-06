@@ -50,45 +50,48 @@ def test_durable_write_handles_short_writes(tmp_path):
     assert call_count == 2
 
 
-def test_durable_write_dir_fsync_on_posix(tmp_path):
-    """On non-Windows, the parent directory is fsynced after rename."""
+def test_durable_write_skips_dir_fsync_on_windows(tmp_path):
+    """When _IS_WIN is True, durable_write skips the parent directory fsync."""
     import iscc_usearch.utils as utils
 
     target = tmp_path / "out.bin"
     saved_is_win = utils._IS_WIN
     try:
-        if utils._IS_WIN:
-            # On Windows we can't open directories — verify the branch via _IS_WIN toggle.
-            # Temporarily force _IS_WIN=True and confirm no dir fsync attempt.
-            utils._IS_WIN = True
-            durable_write(b"data", target)
-            assert target.read_bytes() == b"data"
-            # Force _IS_WIN=False and test with patched os calls to cover the branch.
-            utils._IS_WIN = False
-            real_open = os.open
-            real_close = os.close
-            real_fsync = os.fsync
-            dir_synced = False
+        utils._IS_WIN = True
+        durable_write(b"data", target)
+        assert target.read_bytes() == b"data"
+    finally:
+        utils._IS_WIN = saved_is_win
 
-            def patched_open(path, flags, *args, **kwargs):
-                if flags == os.O_RDONLY:
-                    nonlocal dir_synced
-                    dir_synced = True
-                    return 999
-                return real_open(path, flags, *args, **kwargs)
 
-            with (
-                patch.object(os, "open", side_effect=patched_open),
-                patch.object(os, "fsync", side_effect=lambda fd: None if fd == 999 else real_fsync(fd)),
-                patch.object(os, "close", side_effect=lambda fd: None if fd == 999 else real_close(fd)),
-            ):
-                durable_write(b"posix", target)
-            assert dir_synced
-            assert target.read_bytes() == b"posix"
-        else:
-            # On actual POSIX, the code runs natively.
-            durable_write(b"data", target)
-            assert target.read_bytes() == b"data"
+def test_durable_write_dir_fsync_on_posix(tmp_path):
+    """When _IS_WIN is False, durable_write fsyncs the parent directory."""
+    import iscc_usearch.utils as utils
+
+    target = tmp_path / "out.bin"
+    saved_is_win = utils._IS_WIN
+    try:
+        utils._IS_WIN = False
+        real_open = os.open
+        real_close = os.close
+        real_fsync = os.fsync
+        dir_synced = False
+
+        def patched_open(path, flags, *args, **kwargs):
+            if flags == os.O_RDONLY:
+                nonlocal dir_synced
+                dir_synced = True
+                return 999
+            return real_open(path, flags, *args, **kwargs)
+
+        with (
+            patch.object(os, "open", side_effect=patched_open),
+            patch.object(os, "fsync", side_effect=lambda fd: None if fd == 999 else real_fsync(fd)),
+            patch.object(os, "close", side_effect=lambda fd: None if fd == 999 else real_close(fd)),
+        ):
+            durable_write(b"posix", target)
+        assert dir_synced
+        assert target.read_bytes() == b"posix"
     finally:
         utils._IS_WIN = saved_is_win
 
