@@ -14,7 +14,7 @@ Confirms expected behavior when creating Index with various parameter combinatio
 """
 
 import numpy as np
-import pytest
+from numpy.testing import assert_array_equal
 from usearch.index import Index, MetricKind, ScalarKind
 
 
@@ -112,11 +112,13 @@ def test_init_with_multi_false():
 
     assert idx.multi is False
 
-    # Verify duplicate keys raise error
-    idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
+    # Verify duplicate keys are silently skipped
+    vector1 = np.array([178, 204, 60, 240], dtype=np.uint8)
+    idx.add(1, vector1)
+    idx.add(1, np.array([100, 150, 200, 250], dtype=np.uint8))
 
-    with pytest.raises(RuntimeError, match="Duplicate keys not allowed"):
-        idx.add(1, np.array([100, 150, 200, 250], dtype=np.uint8))
+    assert len(idx) == 1
+    assert_array_equal(idx.get(1), vector1)
 
 
 def test_init_with_enable_key_lookups_false():

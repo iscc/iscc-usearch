@@ -571,6 +571,10 @@ class ShardedIndex:
     ) -> int | NDArray[np.uint64]:
         """Add vectors to the active shard, rotating if size exceeded.
 
+        Duplicate keys within the active shard are silently skipped. Keys that
+        exist in view shards are NOT checked — use ``add_once()`` for cross-shard
+        first-write-wins semantics.
+
         :param keys: Integer key(s) or None for auto-generation
         :param vectors: Vector or batch of vectors to add
         :param copy: Whether to copy vectors into index
@@ -583,10 +587,12 @@ class ShardedIndex:
         if self._active_shard is None:
             self._active_shard = self._create_shard()
 
-        # Delegate to active shard (usearch accepts None keys for auto-generation)
+        # Measure actual insertions (skipped duplicates appear in result but don't grow the shard)
+        len_before = len(self._active_shard)
         result = self._active_shard.add(
             cast(Any, keys), vectors, copy=copy, threads=threads, log=log, progress=progress
         )
+        count_added = len(self._active_shard) - len_before
 
         # Always update bloom filter if it exists (keeps it in sync regardless of _use_bloom)
         if self._bloom is not None:
@@ -602,7 +608,6 @@ class ShardedIndex:
                 self._needs_compact = True
 
         # Amortized rotation check: only compute serialized_length when countdown expires
-        count_added = len(np.atleast_1d(result))
         self._dirty += count_added
         self._adds_until_size_check -= count_added
         if self._adds_until_size_check <= 0:
@@ -620,11 +625,12 @@ class ShardedIndex:
         vectors: NDArray[Any],
         **kwargs: Any,
     ) -> int | NDArray | None:
-        """Add vectors, silently skipping keys that already exist.
+        """Add vectors, silently skipping keys that already exist in any shard.
 
-        First-write-wins: if a key is already in the index, its vector is kept
-        unchanged. Duplicate keys within a single batch are deduplicated — only the
-        first occurrence is added.
+        Cross-shard first-write-wins: checks bloom filter and all shards (view +
+        active) before adding. Use this instead of ``add()`` when the same key may
+        appear across shard boundaries. Duplicate keys within a single batch are
+        deduplicated — only the first occurrence is added.
 
         Not atomic under concurrent writes — caller must serialize if needed
         (see ShardedIndex concurrency model).
@@ -2190,6 +2196,9 @@ class _UuidKeyMixin:
 
     def add(self, keys: Any, vectors: NDArray[Any], **kwargs: Any) -> Any:
         """Add vectors with strict 128-bit key validation.
+
+        Duplicate keys within the active shard are silently skipped. Use
+        ``add_once()`` for cross-shard first-write-wins semantics.
 
         :param keys: bytes(16) key, V16 ndarray batch, or iterable of bytes(16)
         :param vectors: Vector or batch of vectors to add

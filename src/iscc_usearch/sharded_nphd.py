@@ -293,6 +293,8 @@ class ShardedNphdIndex(ShardedIndex):
         """Add variable-length binary vectors to the index.
 
         Pads vectors before adding to ensure consistent storage across shards.
+        Duplicate keys within the active shard are silently skipped. Use
+        ``add_once()`` for cross-shard first-write-wins semantics.
 
         :param keys: Integer key(s) or None for auto-generation
         :param vectors: Single vector or batch of variable-length vectors to add

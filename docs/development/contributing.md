@@ -114,6 +114,9 @@ Each patch is maintained on a separate branch to facilitate upstream merging:
     Add 128-bit (UUID) key support to `Index` and `Indexes` via `key_kind="uuid"`
 - [`add-nphd-metric`](https://github.com/iscc/usearch/compare/unum-cloud:main...add-nphd-metric) —
     Native `MetricKind.NPHD` for Normalized Prefix Hamming Distance
+- [`fix-add-skip-duplicates`](https://github.com/iscc/usearch/compare/unum-cloud:main...fix-add-skip-duplicates) —
+    Skip duplicate keys silently in `add()` instead of erroring with partial commit
+    ([iscc/usearch#6](https://github.com/iscc/usearch/issues/6))
 
 See the [Performance explanation](../explanation/performance.md) for details on the performance
 patches.

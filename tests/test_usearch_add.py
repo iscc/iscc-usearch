@@ -8,7 +8,6 @@ Confirm the expected behavior of usearch Index.add() with
 """
 
 import numpy as np
-import pytest
 from numpy.testing import assert_array_equal
 from usearch.index import Index, MetricKind, ScalarKind
 
@@ -51,14 +50,16 @@ def test_add_multiple_different_keys_returns_respective_keys():
     assert_array_equal(result3, expected3)
 
 
-def test_add_duplicate_key_raises_runtime_error():
-    """Adding to same key twice with multi=False raises RuntimeError."""
+def test_add_duplicate_key_silently_skipped():
+    """Adding to same key twice with multi=False silently keeps the first vector."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
 
-    idx.add(1, np.array([178, 204, 60, 240], dtype=np.uint8))
+    vector1 = np.array([178, 204, 60, 240], dtype=np.uint8)
+    idx.add(1, vector1)
+    idx.add(1, np.array([100, 150, 200, 250], dtype=np.uint8))
 
-    with pytest.raises(RuntimeError, match="Duplicate keys not allowed"):
-        idx.add(1, np.array([100, 150, 200, 250], dtype=np.uint8))
+    assert len(idx) == 1
+    assert_array_equal(idx.get(1), vector1)
 
 
 def test_add_with_key_none_generates_key():
@@ -402,16 +403,10 @@ def test_autokey_with_non_contiguous_explicit_keys():
     assert_array_equal(result, expected)
 
 
-def test_autokey_can_collide_with_explicit_keys():
-    """
-    Auto-generated keys can collide with explicitly assigned keys.
-
-    Since autokey = len(index), if an explicit key equals a future size,
-    a collision will occur and raise RuntimeError.
-    """
+def test_autokey_collision_with_explicit_keys_silently_skipped():
+    """Auto-generated key colliding with an explicit key is silently skipped."""
     idx = Index(ndim=32, metric=MetricKind.Hamming, dtype=ScalarKind.B1, multi=False)
 
-    # Add explicit keys at positions that will collide with future autokeys
     idx.add(0, np.array([0, 0, 0, 0], dtype=np.uint8))  # size=1
     idx.add(2, np.array([2, 2, 2, 2], dtype=np.uint8))  # size=2
     idx.add(4, np.array([4, 4, 4, 4], dtype=np.uint8))  # size=3
@@ -419,14 +414,13 @@ def test_autokey_can_collide_with_explicit_keys():
     # Autokey should be 3 (size=3), which doesn't collide
     result = idx.add(None, np.array([10, 10, 10, 10], dtype=np.uint8))
     expected = np.array([3], dtype=np.uint64)
-    expected_size = 4
-
     assert_array_equal(result, expected)
-    assert len(idx) == expected_size
+    assert len(idx) == 4
 
-    # Next autokey would be 4, but key 4 already exists!
-    with pytest.raises(RuntimeError, match="Duplicate keys not allowed"):
-        idx.add(None, np.array([11, 11, 11, 11], dtype=np.uint8))
+    # Next autokey would be 4, but key 4 already exists — silently skipped
+    idx.add(None, np.array([11, 11, 11, 11], dtype=np.uint8))
+    assert len(idx) == 4
+    assert_array_equal(idx.get(4), np.array([4, 4, 4, 4], dtype=np.uint8))
 
 
 def test_autokey_batch_uses_sequential_sizes():

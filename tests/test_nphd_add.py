@@ -1,7 +1,6 @@
 """Test NphdIndex/ShardedNphdIndex.add() with variable-length binary vectors."""
 
 import numpy as np
-import pytest
 from numpy.testing import assert_array_equal
 
 
@@ -93,17 +92,19 @@ def test_add_batch_auto_keys(nphd_index_factory):
     assert len(idx) == 3
 
 
-def test_add_duplicate_key_raises_error(nphd_index_factory):
-    """Adding to same key twice raises RuntimeError."""
+def test_add_duplicate_key_silently_skipped(nphd_index_factory):
+    """Adding to same key twice silently keeps the first vector."""
     idx = nphd_index_factory(max_dim=256)
 
     vector1 = np.array([178, 204, 60, 240], dtype=np.uint8)
     vector2 = np.array([100, 150, 200, 250], dtype=np.uint8)
 
     idx.add(1, vector1)
+    idx.add(1, vector2)
 
-    with pytest.raises(RuntimeError, match="Duplicate keys not allowed"):
-        idx.add(1, vector2)
+    assert len(idx) == 1
+    stored = idx.get(1)
+    assert_array_equal(stored[:4], vector1)
 
 
 def test_add_multiple_keys_returns_respective_keys(nphd_index_factory):

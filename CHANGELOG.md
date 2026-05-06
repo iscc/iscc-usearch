@@ -7,12 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Batch `add()` with duplicate keys no longer corrupts index state. Duplicate keys (within the
+    active shard) are silently skipped instead of raising `RuntimeError` with partial commit.
+    Fixes inconsistent `size`, bloom filter, and dirty counter after failed batch adds
+    ([#21](https://github.com/iscc/iscc-usearch/issues/21),
+    [iscc/usearch#6](https://github.com/iscc/usearch/issues/6))
+
 ### Changed
 
 - Index saves use buffer-then-write strategy for lower IOPS and power-loss durability.
     Serializes to an in-memory buffer, writes it to disk via `os.write()`, flushes with `fdatasync`,
     then atomically renames. Reduces write syscalls from ~3N to 3 (where N = number of vectors)
     and adds durability guarantees that were previously absent.
+- Bump `usearch-iscc` to 2.24.4
 
 ## [0.6.1] - 2026-03-10
 
