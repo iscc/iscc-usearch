@@ -1968,7 +1968,8 @@ class ShardedIndex:
 
     def _rotate_shard_sync(self, shard_path: Path) -> None:
         """Synchronous rotation: blocks until shard is persisted and viewable."""
-        assert self._active_shard is not None
+        if self._active_shard is None:  # pragma: no cover
+            return
 
         # Persist bloom → shard → tombstones (safe ordering for crash recovery:
         # shard must be durable before tombstone removals become visible)
@@ -1997,7 +1998,8 @@ class ShardedIndex:
 
     def _rotate_shard_background(self, shard_path: Path) -> None:
         """Background rotation: detach shard, submit save task, resume immediately."""
-        assert self._active_shard is not None
+        if self._active_shard is None:  # pragma: no cover
+            return
 
         # Enforce backpressure: block if too many pending rotations
         self._enforce_pending_limit()
