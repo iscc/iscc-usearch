@@ -18,6 +18,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Sequence, cast
 
+from loguru import logger
 import numpy as np
 from numpy.typing import NDArray
 from usearch.index import (
@@ -1138,8 +1139,6 @@ class ShardedIndex:
 
         self._persist_tombstones()
 
-        from loguru import logger
-
         num_shards = len(self._discover_shards())
         if num_shards:
             logger.info(f"Saved {num_shards} shard(s) to {self._path}")
@@ -1159,7 +1158,6 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
-        from loguru import logger
 
         # Create fresh bloom filter
         self._bloom = ScalableBloomFilter()
@@ -1324,7 +1322,6 @@ class ShardedIndex:
         Finished shards are memory-mapped (read-only), last shard is loaded for writes.
         Cleans up stale .tmp files left by interrupted saves.
         """
-        from loguru import logger
 
         # Clean up stale temp files from interrupted saves/compactions
         for pattern in ("*.usearch.tmp", "*.isbf.tmp", "*.npy.tmp", "*.usearch.compact"):
@@ -1828,7 +1825,6 @@ class ShardedIndex:
 
         Returns None when no bloom file exists or if the file is corrupt.
         """
-        from loguru import logger
 
         bloom_path = self._path / BLOOM_FILENAME
         if bloom_path.exists():
@@ -2012,8 +2008,6 @@ class ShardedIndex:
         # Detach the old active shard
         old_shard = self._active_shard
 
-        from loguru import logger
-
         logger.info(f"ShardedIndex background rotate {shard_path.name} ({len(old_shard):,} vectors)")
 
         # Create new active shard immediately — add() resumes here
@@ -2027,12 +2021,23 @@ class ShardedIndex:
 
     def _background_rotate_task(self, shard: Index, shard_path: Path, tombstone_data: bytes | None) -> Index:
         """Background thread: serialize shard, write durably, persist tombstones, view."""
-        data = shard.save(release_gil=True)
-        durable_write(data, shard_path)
-        self._persist_tombstone_data(tombstone_data)
-        viewed = self._restore_shard(shard_path, view=True)
-        if viewed is None:  # pragma: no cover
-            raise RuntimeError(f"Failed to restore shard: {shard_path}")
+
+        t0 = time.perf_counter()
+        try:
+            data = shard.save(release_gil=True)
+            durable_write(data, shard_path)
+            self._persist_tombstone_data(tombstone_data)
+            viewed = self._restore_shard(shard_path, view=True)
+            if viewed is None:  # pragma: no cover
+                raise RuntimeError(f"Failed to restore shard: {shard_path}")
+        except Exception:
+            logger.exception(f"Background rotation failed for {shard_path.name}")
+            raise
+        elapsed = time.perf_counter() - t0
+        logger.info(
+            f"Background rotation completed {shard_path.name} "
+            f"({len(shard):,} vectors, {len(data):,} bytes, {elapsed:.2f}s)"
+        )
         return viewed
 
     def _get_executor(self) -> ThreadPoolExecutor:
@@ -2049,8 +2054,6 @@ class ShardedIndex:
             if len(self._pending_rotations) < self._max_pending_rotations:
                 break
             # Must wait for the oldest pending rotation
-            from loguru import logger
-
             logger.warning(
                 "Background rotation queue full — blocking until oldest rotation completes "
                 f"({len(self._pending_rotations)}/{self._max_pending_rotations} pending)"
@@ -2118,8 +2121,6 @@ class ShardedIndex:
 
             # If the future already failed, retry once
             if future.done() and future.exception() is not None:
-                from loguru import logger
-
                 logger.warning(f"Retrying failed background rotation for {path.name}")
                 future = self._get_executor().submit(self._background_rotate_task, shard, path, ts_data)
                 self._pending_rotations[0] = (shard, path, future, ts_data)

@@ -281,6 +281,17 @@ def test_add_once_drains_before_executing(tmp_path):
 # === Error handling ===
 
 
+def test_background_rotate_task_logs_and_reraises_on_failure(tmp_path):
+    """_background_rotate_task logs exception and re-raises on I/O failure."""
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True)
+    shard = index._create_shard()
+    shard.add(0, _make_vec())
+
+    bad_path = tmp_path / "no_such_dir" / "shard_000.usearch"
+    with pytest.raises(FileNotFoundError):
+        index._background_rotate_task(shard, bad_path, None)
+
+
 def test_error_propagates_on_add(tmp_path):
     """Background rotation failure propagates on next add()."""
     index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True)

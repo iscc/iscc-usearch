@@ -43,6 +43,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     preventing previously deleted keys from reappearing after a crash
 - Missing or corrupt bloom filter files are automatically rebuilt from shard keys on load
     instead of silently disabling bloom lookups
+- Background rotation task logs elapsed time, vector count, and byte size on completion;
+    logs exception details before re-raising on failure
+- Move loguru import to module-level for consistency and avoid repeated inline imports
 - Bump `usearch-iscc` to 2.24.5
 
 ## [0.7.0] - 2026-05-06
