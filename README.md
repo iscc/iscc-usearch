@@ -5,7 +5,11 @@
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iscc/iscc-usearch)
 
-**Larger-than-RAM writable HNSW indexes, and variable-length binary vector search.**
+**A vector search library extending [USearch](https://github.com/unum-cloud/usearch) with sharded
+indexes, variable-length binary vectors, and 128-bit keys.**
+
+> **Looking for a ready-to-use ISCC search engine with CLI and REST API?**
+> See [iscc-search](https://github.com/iscc/iscc-search), which uses iscc-usearch internally.
 
 `iscc-usearch` is a Python library that extends [USearch](https://github.com/unum-cloud/usearch) - a
 [high-performance](https://github.com/unum-cloud/usearch#performance) HNSW library adopted by

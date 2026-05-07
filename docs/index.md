@@ -1,6 +1,6 @@
 ---
 icon: lucide/house
-description: Python library extending USearch with sharded HNSW indexes, Normalized Prefix Hamming Distance for variable-length binary vectors, and 128-bit UUID key support.
+description: A vector search library extending USearch with sharded HNSW indexes, variable-length binary vectors via Normalized Prefix Hamming Distance, and 128-bit UUID key support.
 ---
 
 # iscc-usearch
@@ -10,7 +10,13 @@ description: Python library extending USearch with sharded HNSW indexes, Normali
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](https://github.com/iscc/iscc-usearch/blob/main/LICENSE)
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/iscc/iscc-usearch)
 
-**Larger-than-RAM writable HNSW indexes, and variable-length binary vector search.**
+**A vector search library extending [USearch](https://github.com/unum-cloud/usearch) with sharded
+indexes, variable-length binary vectors, and 128-bit keys.**
+
+!!! tip "Looking for a ready-to-use ISCC search engine?"
+
+    [iscc-search](https://github.com/iscc/iscc-search) provides a CLI and REST API for ISCC
+    similarity search, using iscc-usearch internally.
 
 ## Introduction
 
