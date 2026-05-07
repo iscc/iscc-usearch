@@ -41,6 +41,10 @@ This ordering prevents previously deleted keys from reappearing after a crash. I
 dies after writing the shard but before updating tombstones, the stale tombstone entries just
 hide the key from view shards — but the key is safely in the shard.
 
+Background rotation (`background_rotation=True`) preserves this ordering: tombstone state is
+captured in-memory at rotation time, and the background thread persists it after `durable_write`
+completes — matching the synchronous path.
+
 ### Crash recovery
 
 On load, `ShardedIndex` applies defensive recovery:

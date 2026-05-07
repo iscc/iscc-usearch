@@ -184,6 +184,8 @@ class ShardedNphdIndex(ShardedIndex):
         :param connectivity: HNSW connectivity parameter (M)
         :param expansion_add: Search depth on insertions (efConstruction)
         :param expansion_search: Search depth on queries (ef)
+        :param kwargs: Passed to ShardedIndex (bloom_filter, read_only, background_rotation,
+            max_pending_rotations)
         """
         # Store path early for _resolve_max_dim
         self._path = Path(path)
@@ -325,6 +327,7 @@ class ShardedNphdIndex(ShardedIndex):
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
+        self.drain_rotations()
         if keys is None:
             raise ValueError("upsert() requires explicit keys")
         if self._config.get("multi"):
@@ -374,7 +377,10 @@ class ShardedNphdIndex(ShardedIndex):
         :param kwargs: Additional arguments passed to add()
         :return: Key(s) added, empty array if all skipped, None if single key skipped
         :raises ValueError: If keys is None or keys/vectors length mismatch
+        :raises RuntimeError: If index is read-only or closed
         """
+        self._check_writable()
+        self.drain_rotations()
         if keys is None:
             raise ValueError("add_once() requires explicit keys")
         if self._is_single_key(keys):

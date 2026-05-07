@@ -120,6 +120,18 @@ concurrent access with a lock if using threads.
 For sharded indexes, shard rotation (save + reopen) is not atomic. Concurrent reads during rotation
 are safe because completed view shards are immutable, but concurrent writes must be serialized.
 
+### Background rotation threading
+
+With `background_rotation=True`, shard serialization runs in a single background thread
+(`ThreadPoolExecutor(max_workers=1)`). The main thread detaches the full shard and creates a new
+active shard immediately. The background thread serializes the detached shard with
+`release_gil=True`, writes it durably, persists tombstones, and memory-maps the result. Once
+complete, the view shard is registered on the next `add()` or `drain_rotations()` call.
+
+This is safe because the detached shard is no longer referenced by the main thread — the background
+thread has exclusive ownership. The executor is single-threaded, so pending rotations serialize
+naturally. `close()` and the context manager drain all pending rotations before releasing resources.
+
 ## Why a thin wrapper
 
 `iscc-usearch` does not fork USearch's index logic. It wraps the existing `Index` class and adds

@@ -335,3 +335,13 @@ def test_vectors_repr(tmp_path):
 
     assert "ShardedNphdIndexedVectors" in repr_str
     assert "count=2" in repr_str
+
+
+def test_add_once_raises_after_close(tmp_path):
+    """add_once() raises RuntimeError after close()."""
+    idx = ShardedNphdIndex(max_dim=256, path=tmp_path / "shards")
+    idx.add(1, np.array([1, 2, 3, 4], dtype=np.uint8))
+    idx.close()
+
+    with pytest.raises(RuntimeError, match="index is closed"):
+        idx.add_once(2, np.array([5, 6, 7, 8], dtype=np.uint8))

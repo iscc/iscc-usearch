@@ -11,7 +11,10 @@ rebuilds view shards to reclaim space.
 from __future__ import annotations
 
 import itertools
+import io
 import os
+import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any, Callable, Sequence, cast
 
@@ -396,6 +399,11 @@ class ShardedIndex:
     :param bloom_filter: Enable bloom filter for fast non-existent key rejection
     :param read_only: Open all shards in view mode (memory-mapped, read-only). Raises
         ValueError if no existing shards are found. Write operations raise RuntimeError.
+    :param background_rotation: Run shard rotation in a background thread. When True,
+        add() returns immediately after detaching the full shard; the disk write happens
+        asynchronously. Rotated data is not searchable until registered (see drain_rotations).
+    :param max_pending_rotations: Maximum number of unregistered background rotations before
+        add() blocks (backpressure). Default 2.
     """
 
     def __init__(
@@ -412,12 +420,21 @@ class ShardedIndex:
         shard_size: int = DEFAULT_SHARD_SIZE,
         bloom_filter: bool = True,
         read_only: bool = False,
+        background_rotation: bool = False,
+        max_pending_rotations: int = 2,
     ) -> None:
         """Initialize a sharded index."""
         self._path = Path(path)
         self._shard_size = shard_size
         self._use_bloom = bloom_filter
         self._read_only = read_only
+
+        # Background rotation configuration
+        self._background_rotation = background_rotation
+        self._max_pending_rotations = max_pending_rotations
+        self._pending_rotations: list[tuple[Index, Path, Future, bytes | None]] = []
+        self._rotation_executor: ThreadPoolExecutor | None = None
+        self._closed: bool = False
 
         # Initialize shard containers early (used by _discover_shards)
         self._view_shards: Indexes | None = None
@@ -474,6 +491,13 @@ class ShardedIndex:
             self._active_shard = self._create_shard()
             if self._use_bloom:
                 self._bloom = ScalableBloomFilter()
+
+        # Initialize shard number counter from discovered shards
+        existing = self._discover_shards()
+        if existing:
+            self._next_shard_number: int = int(existing[-1].stem.split("_")[1]) + 1
+        else:
+            self._next_shard_number: int = 0
 
     # --- Key handling hooks (override in _UuidKeyMixin for uuid keys) ---
 
@@ -553,7 +577,9 @@ class ShardedIndex:
         return self._read_only
 
     def _check_writable(self) -> None:
-        """Raise RuntimeError if the index is read-only."""
+        """Raise RuntimeError if the index is read-only or closed."""
+        if self._closed:
+            raise RuntimeError("index is closed")
         if self._read_only:
             raise RuntimeError("index is read-only")
 
@@ -584,6 +610,7 @@ class ShardedIndex:
         :return: Key(s) for added vectors
         """
         self._check_writable()
+        self._register_completed_rotations()
         if self._active_shard is None:
             self._active_shard = self._create_shard()
 
@@ -643,6 +670,7 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
+        self.drain_rotations()
         if keys is None:
             raise ValueError("add_once() requires explicit keys")
         if self._is_single_key(keys):
@@ -679,6 +707,7 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
+        self.drain_rotations()
         if keys is None:
             raise ValueError("upsert() requires explicit keys")
         if self._config.get("multi"):
@@ -1080,6 +1109,7 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only.
         """
         self._check_writable()
+        self.drain_rotations()
         if path_or_buffer is not None:
             raise TypeError(
                 "ShardedIndex.save() does not accept a path argument. "
@@ -1100,6 +1130,10 @@ class ShardedIndex:
                 data = self._active_shard.save(progress=progress)
                 durable_write(data, shard_path)
             self._active_shard_path = shard_path
+            self._invalidate_shard_cache()
+        elif self._active_shard_path is not None and self._active_shard_path.exists():
+            self._active_shard_path.unlink()
+            self._active_shard_path = None
             self._invalidate_shard_cache()
 
         self._persist_tombstones()
@@ -1179,6 +1213,7 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
+        self.drain_rotations()
 
         seen: set = set()
         total_removed = 0
@@ -1578,6 +1613,7 @@ class ShardedIndex:
         :raises ValueError: If multi=True
         """
         self._check_writable()
+        self.drain_rotations()
         if self._config.get("multi"):
             raise ValueError("remove() requires multi=False")
         if self._is_single_key(keys):
@@ -1681,6 +1717,7 @@ class ShardedIndex:
         :raises RuntimeError: If index is read-only
         """
         self._check_writable()
+        self.drain_rotations()
         # Release view shards (GC frees memory-mapped files)
         self._view_shards = None
         self._viewed_indexes.clear()
@@ -1831,12 +1868,14 @@ class ShardedIndex:
         self._cached_shards = None
 
     def _get_next_shard_number(self) -> int:
-        """Get the next available shard number."""
-        existing = self._discover_shards()
-        if not existing:
-            return 0
-        last_num = int(existing[-1].stem.split("_")[1])
-        return last_num + 1
+        """Get the next available shard number (non-mutating peek)."""
+        return self._next_shard_number
+
+    def _reserve_shard_number(self) -> int:
+        """Reserve and return the next shard number (increments counter)."""
+        num = self._next_shard_number
+        self._next_shard_number += 1
+        return num
 
     def _get_shard_path(self, shard_num: int) -> Path:
         """Generate path for a shard file."""
@@ -1845,11 +1884,11 @@ class ShardedIndex:
     def _get_active_shard_path(self) -> Path:
         """Get path for saving the active shard.
 
-        Returns the tracked path if loaded from disk, otherwise the next available number.
+        Returns the tracked path if loaded from disk, otherwise reserves the next number.
         """
         if self._active_shard_path is not None:
             return self._active_shard_path
-        return self._get_shard_path(self._get_next_shard_number())
+        return self._get_shard_path(self._reserve_shard_number())
 
     def _schedule_next_size_check(self, current_size: int) -> None:
         """Estimate how many adds until shard reaches size limit.
@@ -1891,17 +1930,45 @@ class ShardedIndex:
         elif tombstone_path.exists():
             tombstone_path.unlink()
 
+    def _capture_tombstone_data(self) -> bytes | None:
+        """Snapshot tombstone state as serialized bytes for deferred persistence."""
+        if self._tombstones or self._needs_compact:
+            arr = np.array(sorted(self._tombstones), dtype=self._key_dtype)
+            buf = io.BytesIO()
+            np.save(buf, arr)
+            return buf.getvalue()
+        return None
+
+    def _persist_tombstone_data(self, data: bytes | None) -> None:
+        """Write pre-captured tombstone snapshot to disk."""
+        tombstone_path = self._path / TOMBSTONE_FILENAME
+        if data is not None:
+            with atomic_write(tombstone_path) as tmp:
+                with open(tmp, "wb") as f:
+                    f.write(data)
+        elif tombstone_path.exists():
+            tombstone_path.unlink()
+
     def _rotate_shard(self) -> None:
-        """Save current shard and create new one."""
+        """Save current shard and create new one (sync or background)."""
         if self._active_shard is None:
             return
 
         # Use tracked path if loaded from disk (overwrites in-place),
-        # otherwise use next available number for new shards
+        # otherwise reserve next available number for new shards
         if self._active_shard_path is not None:
             shard_path = self._active_shard_path
         else:
-            shard_path = self._get_shard_path(self._get_next_shard_number())
+            shard_path = self._get_shard_path(self._reserve_shard_number())
+
+        if self._background_rotation:
+            self._rotate_shard_background(shard_path)
+        else:
+            self._rotate_shard_sync(shard_path)
+
+    def _rotate_shard_sync(self, shard_path: Path) -> None:
+        """Synchronous rotation: blocks until shard is persisted and viewable."""
+        assert self._active_shard is not None
 
         # Persist bloom → shard → tombstones (safe ordering for crash recovery:
         # shard must be durable before tombstone removals become visible)
@@ -1917,20 +1984,185 @@ class ShardedIndex:
             durable_write(data, shard_path)
 
         self._persist_tombstones()
-        # Clear tracked path since we're creating a new unsaved shard
         self._active_shard_path = None
-        # Invalidate cache since new shard file was created
         self._invalidate_shard_cache()
 
-        # Load the saved shard in view mode and register it
         viewed_shard = self._restore_shard(shard_path, view=True)
         if viewed_shard is None:  # pragma: no cover
             raise RuntimeError(f"Failed to restore shard: {shard_path}")
         self._register_view_shard(viewed_shard)
 
-        # Create new active shard and reset size check countdown
         self._active_shard = self._create_shard()
         self._adds_until_size_check = 0
+
+    def _rotate_shard_background(self, shard_path: Path) -> None:
+        """Background rotation: detach shard, submit save task, resume immediately."""
+        assert self._active_shard is not None
+
+        # Enforce backpressure: block if too many pending rotations
+        self._enforce_pending_limit()
+
+        self._persist_bloom()
+        # Snapshot tombstones for background task (shard-before-tombstones ordering:
+        # background task persists this AFTER durable_write, matching sync path)
+        tombstone_data = self._capture_tombstone_data()
+
+        # Detach the old active shard
+        old_shard = self._active_shard
+
+        from loguru import logger
+
+        logger.info(f"ShardedIndex background rotate {shard_path.name} ({len(old_shard):,} vectors)")
+
+        # Create new active shard immediately — add() resumes here
+        self._active_shard = self._create_shard()
+        self._active_shard_path = None
+        self._adds_until_size_check = 0
+
+        # Submit background save task
+        future = self._get_executor().submit(self._background_rotate_task, old_shard, shard_path, tombstone_data)
+        self._pending_rotations.append((old_shard, shard_path, future, tombstone_data))
+
+    def _background_rotate_task(self, shard: Index, shard_path: Path, tombstone_data: bytes | None) -> Index:
+        """Background thread: serialize shard, write durably, persist tombstones, view."""
+        data = shard.save(release_gil=True)
+        durable_write(data, shard_path)
+        self._persist_tombstone_data(tombstone_data)
+        viewed = self._restore_shard(shard_path, view=True)
+        if viewed is None:  # pragma: no cover
+            raise RuntimeError(f"Failed to restore shard: {shard_path}")
+        return viewed
+
+    def _get_executor(self) -> ThreadPoolExecutor:
+        """Lazily create the single-worker rotation executor."""
+        if self._rotation_executor is None:
+            self._rotation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shard-rotate")
+        return self._rotation_executor
+
+    def _enforce_pending_limit(self) -> None:
+        """Block if max pending rotations reached, draining oldest first."""
+        while len(self._pending_rotations) >= self._max_pending_rotations:
+            # Try non-blocking drain of completed ones first
+            self._register_completed_rotations()
+            if len(self._pending_rotations) < self._max_pending_rotations:
+                break
+            # Must wait for the oldest pending rotation
+            from loguru import logger
+
+            logger.warning(
+                "Background rotation queue full — blocking until oldest rotation completes "
+                f"({len(self._pending_rotations)}/{self._max_pending_rotations} pending)"
+            )
+            shard, path, future, _ts = self._pending_rotations[0]
+            viewed = future.result()  # blocks
+            self._register_view_shard(viewed)
+            self._pending_rotations.pop(0)
+            self._invalidate_shard_cache()
+
+    def _register_completed_rotations(self) -> None:
+        """Non-blocking: register completed background rotations, raise on first error."""
+        if not self._pending_rotations:
+            return
+
+        still_pending: list[tuple[Index, Path, Future, bytes | None]] = []
+        registered = False
+        first_error: BaseException | None = None
+
+        for shard, path, future, ts_data in self._pending_rotations:
+            if not future.done():
+                still_pending.append((shard, path, future, ts_data))
+                continue
+
+            exc = future.exception()
+            if exc is not None:
+                still_pending.append((shard, path, future, ts_data))
+                if first_error is None:
+                    first_error = exc
+            else:
+                self._register_view_shard(future.result())
+                registered = True
+
+        self._pending_rotations = still_pending
+        if registered:
+            self._invalidate_shard_cache()
+
+        if first_error is not None:
+            raise RuntimeError(f"Background shard rotation failed for {path}") from first_error
+
+    def drain_rotations(self, timeout: float | None = None) -> None:
+        """Wait for all pending background rotations to complete.
+
+        Retries failed rotations once. Called automatically by save(), close(),
+        and key-dependent write operations.
+
+        :param timeout: Maximum seconds to wait (None = wait indefinitely)
+        :raises TimeoutError: If timeout expires with rotations still pending
+        :raises RuntimeError: If a rotation fails on retry
+        """
+        if not self._pending_rotations:
+            return
+
+        deadline = (time.monotonic() + timeout) if timeout is not None else None
+
+        while self._pending_rotations:
+            shard, path, future, ts_data = self._pending_rotations[0]
+
+            # Calculate remaining time budget
+            remaining = None
+            if deadline is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"Timed out with {len(self._pending_rotations)} rotation(s) pending")
+
+            # If the future already failed, retry once
+            if future.done() and future.exception() is not None:
+                from loguru import logger
+
+                logger.warning(f"Retrying failed background rotation for {path.name}")
+                future = self._get_executor().submit(self._background_rotate_task, shard, path, ts_data)
+                self._pending_rotations[0] = (shard, path, future, ts_data)
+
+            try:
+                viewed = future.result(timeout=remaining)
+            except TimeoutError:
+                raise TimeoutError(f"Timed out with {len(self._pending_rotations)} rotation(s) pending") from None
+
+            self._register_view_shard(viewed)
+            self._pending_rotations.pop(0)
+
+        self._invalidate_shard_cache()
+
+    def close(self) -> None:
+        """Shut down cleanly: drain pending rotations, save state, release resources.
+
+        Idempotent — safe to call multiple times. After close(), all write operations
+        raise RuntimeError.
+        """
+        if self._closed:
+            return
+        self._closed = True
+        self.drain_rotations()
+        if not self._read_only and self._active_shard is not None and (len(self._active_shard) > 0 or self._dirty > 0):
+            self._closed = False
+            self.save()
+            self._closed = True
+        if self._rotation_executor is not None:
+            self._rotation_executor.shutdown(wait=True)
+            self._rotation_executor = None
+        # Release mmap view shards (frees file locks on Windows)
+        self._view_shards = None
+        self._viewed_indexes.clear()
+        self._active_shard = None
+        self._active_shard_path = None
+
+    def __enter__(self) -> "ShardedIndex":
+        """Enter context manager."""
+        return self
+
+    def __exit__(self, *exc: Any) -> bool:
+        """Exit context manager — calls close()."""
+        self.close()
+        return False
 
     def _empty_results(self, vectors: NDArray[Any], count: int, is_single: bool) -> Matches | BatchMatches:
         """Return empty results in the appropriate format."""

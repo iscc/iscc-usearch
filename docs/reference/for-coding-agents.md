@@ -50,19 +50,18 @@ index.py ← nphd.py
 ### Public API exports (`__all__`)
 
 ```python
-(
+__all__ = [
     "NphdIndex",
     "ShardedIndex",
     "ShardedIndex128",
-)
-(
     "ShardedNphdIndex",
     "ShardedNphdIndex128",
-)
-"ScalableBloomFilter", "timer"
+    "ScalableBloomFilter",
+    "timer",
+]
 ```
 
-`Index` is **not** exported — it is an internal base class.
+`Index` (from `index.py`) is **not** exported — it is an internal base class.
 
 ---
 
@@ -102,6 +101,23 @@ For sharded indexes, `add()` only checks duplicate keys within the active shard.
 view shards. Use `add_once()` when keys may already exist across shard boundaries and first-write-wins
 semantics are required.
 
+### Which read method?
+
+| Method       | Returns                    | Bloom fast-reject | Tombstone-aware | Registers rotations |
+| ------------ | -------------------------- | :---------------: | :-------------: | :-----------------: |
+| `search()`   | `Matches` / `BatchMatches` |        No         |       Yes       |         No          |
+| `get()`      | Vector(s) or `None`        |        Yes        |       Yes       |         No          |
+| `contains()` | `bool` / `NDArray[bool]`   |        Yes        |       Yes       |         No          |
+| `count()`    | `int` / `NDArray[uint64]`  |        Yes        |       Yes       |         No          |
+
+None of these register completed background rotations. Call `drain_rotations()` before reads
+that require visibility of recently rotated shards.
+
+### Unsupported operations (ShardedIndex)
+
+These raise `NotImplementedError`: `rename()`, `join()`, `cluster()`, `pairwise_distance()`,
+`copy()`, `clear()`.
+
 ---
 
 ## Constraints and invariants
@@ -113,6 +129,11 @@ semantics are required.
 - Within one process: `async`/`await` is safe for concurrent reads.
 - Threads require an external lock — index objects are not thread-safe.
 - Shard rotation is not atomic — concurrent writes must be serialized.
+- `background_rotation=True` uses a single background thread for shard serialization.
+    The detached shard has exclusive ownership in the background thread. Pending rotations
+    serialize via a `ThreadPoolExecutor(max_workers=1)`.
+- Key-dependent writes (`upsert`, `add_once`, `remove`, `save`, `compact`, `reset`)
+    drain pending rotations first. `add()` registers completed rotations non-blocking.
 
 ### Vector constraints
 
@@ -138,17 +159,18 @@ semantics are required.
 
 ### Dirty counter semantics
 
-| Operation           | Effect on `dirty`                      |
-| ------------------- | -------------------------------------- |
-| `add()`             | `+= count_added`                       |
-| `remove()`          | `+= count_of_existing_keys_removed`    |
-| `upsert()`          | Combines remove + add effects          |
-| `save()`            | Reset to 0                             |
-| `load()` / `view()` | Reset to 0                             |
-| `reset()`           | Reset to 0                             |
-| `compact()`         | Reset to 0 (calls `save()` internally) |
-| Shard rotation      | **Not** reset — survives rotation      |
-| `read_only=True`    | Always returns 0                       |
+| Operation           | Effect on `dirty`                           |
+| ------------------- | ------------------------------------------- |
+| `add()`             | `+= count_added`                            |
+| `remove()`          | `+= count_of_existing_keys_removed`         |
+| `upsert()`          | Combines remove + add effects               |
+| `save()`            | Reset to 0                                  |
+| `load()` / `view()` | Reset to 0                                  |
+| `reset()`           | Reset to 0                                  |
+| `compact()`         | Reset to 0 (calls `save()` internally)      |
+| Shard rotation      | **Not** reset — survives rotation           |
+| `close()`           | Reset to 0 via save (if non-empty or dirty) |
+| `read_only=True`    | Always returns 0                            |
 
 ### Bloom filter behavior
 
@@ -185,20 +207,24 @@ _tombstones.clear(), tombstones.npy deleted
 
 ## Side effects catalog
 
-| Method            | Disk writes                                                             | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
-| ----------------- | ----------------------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
-| `add()`           | None (until rotation; rotation durably writes bloom, shard, tombstones) | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
-| `remove()`        | None                                                                    | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
-| `upsert()`        | None                                                                    | Via remove + add        | Via remove + add           | Via add              | Via add                |
-| `add_once()`      | None                                                                    | Via add (new keys only) | None                       | Via add              | Via add                |
-| `save()`          | `.usearch`, `bloom.isbf`, `tombstones.npy`                              | Reset to 0              | Persisted                  | Persisted            | No                     |
-| `load()`          | None                                                                    | Reset to 0              | Loaded from `.npy`         | Loaded from `.isbf`  | No                     |
-| `view()`          | None                                                                    | Reset to 0              | N/A (NphdIndex)            | N/A                  | No                     |
-| `reset()`         | None                                                                    | Reset to 0              | Cleared                    | Cleared              | No                     |
-| `compact()`       | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy`             | Reset to 0              | Cleared                    | Rebuilt              | No                     |
-| `search()`        | None                                                                    | No change               | No change                  | None                 | No                     |
-| `get()`           | None                                                                    | No change               | No change                  | None                 | No                     |
-| `rebuild_bloom()` | `bloom.isbf` (if `save=True`)                                           | No change               | No change                  | Rebuilt from scratch | No                     |
+| Method              | Disk writes                                                             | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
+| ------------------- | ----------------------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
+| `add()`             | None (until rotation; rotation durably writes bloom, shard, tombstones) | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
+| `remove()`          | None                                                                    | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
+| `upsert()`          | None                                                                    | Via remove + add        | Via remove + add           | Via add              | Via add                |
+| `add_once()`        | None                                                                    | Via add (new keys only) | None                       | Via add              | Via add                |
+| `save()`            | `.usearch`, `bloom.isbf`, `tombstones.npy`                              | Reset to 0              | Persisted                  | Persisted            | No                     |
+| `load()`            | None                                                                    | Reset to 0              | Loaded from `.npy`         | Loaded from `.isbf`  | No                     |
+| `view()`            | None                                                                    | Reset to 0              | N/A (NphdIndex)            | N/A                  | No                     |
+| `reset()`           | None                                                                    | Reset to 0              | Cleared                    | Cleared              | No                     |
+| `compact()`         | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy`             | Reset to 0              | Cleared                    | Rebuilt              | No                     |
+| `search()`          | None                                                                    | No change               | No change                  | None                 | No                     |
+| `get()`             | None                                                                    | No change               | No change                  | None                 | No                     |
+| `contains()`        | None                                                                    | No change               | No change                  | None                 | No                     |
+| `count()`           | None                                                                    | No change               | No change                  | None                 | No                     |
+| `rebuild_bloom()`   | `bloom.isbf` (if `save=True`)                                           | No change               | No change                  | Rebuilt from scratch | No                     |
+| `drain_rotations()` | None normally; retries failed rotations (writes shard + tombstones)     | No change               | No change                  | None                 | No                     |
+| `close()`           | Drains, saves if non-empty or dirty, releases mmap/executor             | N/A (closed)            | Persisted via save         | Persisted via save   | No                     |
 
 ---
 
@@ -277,6 +303,55 @@ idx = ShardedNphdIndex(max_dim=256, path="existing_index")
 count = idx.rebuild_bloom()  # Scans all shards, saves bloom.isbf
 ```
 
+### Background rotation with context manager
+
+```python
+from iscc_usearch import ShardedNphdIndex
+
+with ShardedNphdIndex(
+    max_dim=256,
+    path="my_index",
+    background_rotation=True,
+    max_pending_rotations=2,
+) as idx:
+    for key, vec in data_stream:
+        idx.add(key, vec)
+# close() called automatically: drains rotations, saves, releases resources
+```
+
+### Reopen existing index (max_dim auto-detected)
+
+```python
+# max_dim is auto-detected from existing shard metadata when omitted
+idx = ShardedNphdIndex(path="existing_index")
+assert idx.max_dim == 256  # read from shard_*.usearch files
+```
+
+### Iterate keys and vectors lazily
+
+```python
+# keys and vectors are lazy iterators — no full materialization
+for key in idx.keys:
+    print(key)
+
+for vec in idx.vectors:
+    print(vec.shape)  # variable-length, unpadded
+
+# Indexing, slicing, len(), and numpy conversion supported
+first_key = idx.keys[0]
+last_vec = idx.vectors[-1]
+all_keys = np.asarray(idx.keys)
+```
+
+### Inspect index with stats()
+
+```python
+info = idx.stats()
+# Returns: total_vectors, dimensions, metric, dtype, connectivity,
+#   view_shards, active_shard_vectors, shard_size, dirty, tombstones,
+#   bloom_filter, memory_usage, path, read_only
+```
+
 ### Open existing index read-only
 
 ```python
@@ -302,12 +377,15 @@ Also update:
 
 ### If modifying shard rotation
 
-Files: `sharded.py` (`_rotate_shard`, `_schedule_next_size_check`, `_adds_until_size_check`)
+Files: `sharded.py` (`_rotate_shard`, `_rotate_shard_sync`, `_rotate_shard_background`,
+`_background_rotate_task`, `_schedule_next_size_check`, `_adds_until_size_check`)
 
 Also update:
 
-- `sharded.py` — `add()` (calls rotation), `_load_existing()` (loads rotated shards)
+- `sharded.py` — `add()` (calls rotation), `_load_existing()` (loads rotated shards),
+    `drain_rotations()`, `close()`, `_enforce_pending_limit()`, `_register_completed_rotations()`
 - `sharded_nphd.py` — `_create_shard()`, `_restore_shard()` (shard creation/restore hooks)
+- `tests/test_sharded_background_rotation.py` — background rotation tests
 - `docs/explanation/sharding-design.md`
 - `docs/howto/sharding.md`
 
@@ -382,8 +460,10 @@ duplicates cause `size` to overcount. Call `compact()` for an exact count.
 
 ---
 
-**ALWAYS** call `save()` before process exit. Unsaved data in the active shard is lost.
-Use the `dirty` counter to implement flush policies.
+**ALWAYS** call `close()` or use a context manager before process exit. `close()` drains
+pending background rotations, saves unsaved state, and releases mmap/executor resources.
+`save()` is sufficient for durability (it also drains pending rotations) but does not
+release mmap or executor resources. Unsaved data in the active shard is lost.
 
 ---
 

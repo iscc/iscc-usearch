@@ -61,6 +61,40 @@ not checked by `add()`; use `add_once()` when loading data that may repeat acros
 When the active shard exceeds `shard_size`, it is saved to disk and reopened in view mode
 (read-only, memory-mapped). A new active shard is then created.
 
+## Background shard rotation
+
+By default, shard rotation blocks `add()` until the old shard is serialized, written to disk,
+and reopened as a view. Enable background rotation to move serialization off the hot path:
+
+```python
+index = ShardedNphdIndex(
+    max_dim=256,
+    path="./my_shards",
+    shard_size=512 * 1024 * 1024,
+    background_rotation=True,
+    max_pending_rotations=2,  # backpressure limit (default)
+)
+```
+
+With `background_rotation=True`, shard rotation detaches the full shard, submits serialization
+to a background thread, and creates a new active shard immediately. `add()` returns without
+waiting for the disk write to finish.
+
+Rotated data is not searchable until the background task completes and the shard is registered
+as a view. Read methods (`search()`, `get()`, `contains()`) do **not** register completed
+rotations — call `drain_rotations()` before reads that require complete visibility:
+
+```python
+index.drain_rotations()
+```
+
+Key-dependent operations (`upsert`, `add_once`, `remove`, `save`, `compact`, `reset`) drain
+automatically before executing. `add()` registers completed rotations opportunistically but
+does not block.
+
+If `max_pending_rotations` pending tasks queue up, `add()` blocks until the oldest rotation
+finishes (backpressure).
+
 ## Search across shards
 
 Queries run across all shards automatically:
@@ -82,6 +116,31 @@ index.save()
 # Reopen later -- auto-detects existing shards and max_dim
 index = ShardedNphdIndex(path="./my_shards")
 ```
+
+## Close and context manager
+
+`close()` drains pending rotations, saves unsaved state, shuts down the background executor,
+and releases memory-mapped resources. Write operations raise `RuntimeError` after close:
+
+```python
+index = ShardedNphdIndex(max_dim=256, path="./my_shards", background_rotation=True)
+for key, vec in data:
+    index.add(key, vec)
+index.close()
+
+# index.add(...)  # RuntimeError: index is closed
+```
+
+Use the context manager to close automatically on exit:
+
+```python
+with ShardedNphdIndex(max_dim=256, path="./my_shards", background_rotation=True) as index:
+    for key, vec in data:
+        index.add(key, vec)
+# index.close() called automatically
+```
+
+`close()` is idempotent — safe to call multiple times.
 
 ## Read-only mode
 

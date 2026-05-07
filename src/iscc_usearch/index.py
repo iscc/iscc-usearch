@@ -20,7 +20,7 @@ _UUID_DTYPE = np.dtype("V16")
 class Index(_Index):
     """Index with upsert support and durable file saves."""
 
-    def save(self, path_or_buffer=None, progress=None):
+    def save(self, path_or_buffer=None, progress=None, release_gil=False):
         """Save index to file or buffer.
 
         When saving to a file, serializes to an in-memory buffer first, then writes
@@ -28,13 +28,14 @@ class Index(_Index):
 
         :param path_or_buffer: File path to save to, or None to return serialized bytes.
         :param progress: Optional progress callback.
+        :param release_gil: Release the GIL during serialization (requires exclusive access).
         :return: Serialized buffer when saving to memory, None when saving to file.
         """
         if path_or_buffer is not None:
-            data = self._compiled.save_index_to_buffer(progress)
+            data = self._compiled.save_index_to_buffer(progress, release_gil)
             durable_write(data, Path(os.fspath(path_or_buffer)))
             return None
-        return super().save(progress=progress)
+        return super().save(progress=progress, release_gil=release_gil)
 
     def upsert(
         self,

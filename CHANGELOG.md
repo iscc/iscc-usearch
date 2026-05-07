@@ -7,20 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Background shard rotation (`background_rotation=True`) — shard serialization runs in a
+    background thread so `add()` returns immediately. Backpressure blocks when
+    `max_pending_rotations` (default 2) pending rotations queue up. Key-dependent writes
+    (`upsert`, `add_once`, `remove`, `save`, `compact`, `reset`) drain pending rotations first
+    for correctness
+- `close()` method on `ShardedIndex` — drains pending rotations, saves unsaved state, shuts
+    down the background executor, and releases memory-mapped resources. Idempotent and safe to
+    call multiple times. Write operations raise `RuntimeError` after close
+- Context manager support (`with ShardedIndex(...) as idx:`) — calls `close()` on exit
+- `drain_rotations(timeout=None)` method — waits for all pending background rotations to
+    complete. Retries failed rotations once. Raises `TimeoutError` on expiry
+- `Index.save()` accepts `release_gil=True` to release the GIL during serialization (requires
+    exclusive access). Used by background rotation to avoid blocking the main thread
+- `save()` removes stale shard files when the active shard is empty after removals, preventing
+    ghost entries on reload
+
 ### Fixed
 
 - Shard rotation, `save()`, and `compact()` bypass the durable write path — all three called
     `usearch.index.Index.save(path)` directly (no temp file, no fsync, no atomic rename). All
     writable shard saves now go through buffer serialization + `durable_write`
     ([#26](https://github.com/iscc/iscc-usearch/issues/26))
+- `ShardedNphdIndex.add_once()` missing `_check_writable()` guard — allowed writes on closed
+    or read-only indexes
 
 ### Changed
 
+- Shard numbering uses a monotonic counter (`_reserve_shard_number`) instead of scanning the
+    filesystem, avoiding race conditions during background rotation
 - Persistence ordering during `save()` and shard rotation is now bloom → shard → tombstones.
     Tombstone removals only become visible after the shard data they depend on is durable,
     preventing previously deleted keys from reappearing after a crash
 - Missing or corrupt bloom filter files are automatically rebuilt from shard keys on load
     instead of silently disabling bloom lookups
+- Bump `usearch-iscc` to 2.24.5
 
 ## [0.7.0] - 2026-05-06
 

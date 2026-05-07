@@ -47,6 +47,45 @@ This rotation resets the HNSW insert curve and keeps throughput consistent. The
 bloom → shard → tombstones ordering ensures that tombstone removals only become visible after
 the shard data they depend on is safely on disk.
 
+## Background shard rotation
+
+By default, shard rotation is synchronous — `add()` blocks while the full shard is serialized,
+written to disk, and reopened as a view. For write-heavy workloads, this stall can be
+significant.
+
+With `background_rotation=True`, the rotation pipeline changes:
+
+1. Bloom filter persisted (synchronous — fast, small file).
+1. Tombstone state captured as an in-memory snapshot.
+1. Old active shard detached and handed to a single-threaded executor.
+1. New active shard created immediately — `add()` returns.
+1. Background thread: serializes shard (with GIL released), calls `durable_write`, persists
+    tombstone snapshot, memory-maps the shard as a view.
+1. On completion, the view shard is registered and becomes searchable.
+
+The background thread uses `release_gil=True` on `save_index_to_buffer` so the main thread can
+continue Python work (bloom filter updates, active shard inserts) while serialization runs.
+
+### Backpressure
+
+If `max_pending_rotations` tasks queue up (default: 2), the next rotation blocks until the
+oldest pending task completes. This prevents unbounded memory growth from accumulating detached
+shards.
+
+### Drain semantics
+
+`drain_rotations()` waits for all pending background rotations, registering each as a view
+shard. It retries failed rotations once before raising. Key-dependent operations (`upsert`,
+`add_once`, `remove`, `save`, `compact`, `reset`) call `drain_rotations()` automatically.
+`add()` calls `_register_completed_rotations()` — a non-blocking check that registers finished
+tasks without waiting.
+
+### Tombstone snapshots
+
+Background rotation captures tombstone state at rotation time via `_capture_tombstone_data()`.
+The background thread persists this snapshot after `durable_write`, preserving the
+shard-before-tombstones ordering from the synchronous path.
+
 ## Bloom filter integration
 
 `ShardedIndex` has a `ScalableBloomFilter` that tracks all keys across all shards. This allows
