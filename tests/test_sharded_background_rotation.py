@@ -237,14 +237,13 @@ def test_shard_numbers_unique_under_background_rotation(tmp_path):
 # === Key-dependent operations drain first ===
 
 
-def test_remove_drains_before_executing(tmp_path):
-    """remove() drains pending rotations for correctness."""
+def test_remove_finds_keys_in_pending_rotations(tmp_path):
+    """remove() tombstones keys in pending rotation shards without blocking."""
     index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True)
 
-    # Add enough to trigger at least one rotation
     _fill_to_rotation(index)
 
-    # remove() should drain first, then find the key in view shards
+    # Key 0 was rotated — remove should find it (in view or pending shard)
     index.remove(0)
     assert not index.contains(0)
 
@@ -690,3 +689,270 @@ def test_persist_tombstone_data_cleans_stale_file(tmp_path):
 
     index._persist_tombstone_data(None)
     assert not tombstone_path.exists()
+
+
+# === Non-blocking remove (#29) ===
+
+
+def test_remove_does_not_block_on_pending_rotations(tmp_path):
+    """remove() searches pending rotation shards directly instead of blocking."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    # Add a key and force it into a pending rotation shard (never-completing future)
+    shard = index._create_shard()
+    shard.add(42, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    # remove() must find key 42 — tombstone is deferred until rotation completes
+    index.remove(42)
+    assert index._tombstone_key(42) not in index._tombstones
+    assert index._tombstone_key(42) in index._deferred_tombstones[id(shard)]
+
+    # len() unaffected — deferred tombstones don't decrement size
+    assert len(index) == 0
+
+    # dirty must be incremented for pending-only key
+    assert index.dirty == 1
+
+    index._pending_rotations.clear()
+
+
+def test_remove_single_skips_pending_shard_without_key(tmp_path):
+    """Single-key remove iterates past pending shards that don't contain the key."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard_a = index._create_shard()
+    shard_a.add(10, _make_vec())
+    shard_b = index._create_shard()
+    shard_b.add(42, _make_vec())
+
+    never_a: Future = Future()
+    never_b: Future = Future()
+    index._pending_rotations.append((shard_a, tmp_path / "shard_a.usearch", never_a, None))
+    index._pending_rotations.append((shard_b, tmp_path / "shard_b.usearch", never_b, None))
+
+    # Key 42 is only in shard_b — must iterate past shard_a, deferred to shard_b
+    index.remove(42)
+    assert index._tombstone_key(42) in index._deferred_tombstones.get(id(shard_b), set())
+    assert id(shard_a) not in index._deferred_tombstones
+
+    index._pending_rotations.clear()
+
+
+def test_remove_single_active_and_pending_no_double_dirty(tmp_path):
+    """Key in both active and pending shard increments dirty exactly once."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    # Key 7 in active shard
+    vec = _make_vec()
+    index.add(7, vec)
+
+    # Key 7 also in a pending rotation shard
+    shard = index._create_shard()
+    shard.add(7, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    dirty_before = index.dirty
+    index.remove(7)
+    assert index.dirty == dirty_before + 1
+
+    index._pending_rotations.clear()
+
+
+def test_remove_single_pending_only_no_repeat_dirty(tmp_path):
+    """Repeated remove of a pending-only key increments dirty only once."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard = index._create_shard()
+    shard.add(42, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    index.remove(42)
+    assert index.dirty == 1
+    index.remove(42)
+    assert index.dirty == 1
+
+    index._pending_rotations.clear()
+
+
+def test_remove_batch_finds_keys_in_pending_rotations(tmp_path):
+    """Batch remove() defers tombstones for keys in pending rotation shards."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard = index._create_shard()
+    for i in range(5):
+        shard.add(i, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    index.remove([1, 3])
+    deferred = index._deferred_tombstones.get(id(shard), set())
+    assert index._tombstone_key(1) in deferred
+    assert index._tombstone_key(3) in deferred
+    assert index._tombstone_key(0) not in deferred
+    assert index.dirty == 2
+
+    index._pending_rotations.clear()
+
+
+def test_remove_batch_pending_duplicates_count_once(tmp_path):
+    """Duplicate pending-only keys in one batch create one dirty removal."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard = index._create_shard()
+    shard.add(42, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    index.remove([42, 42])
+    assert index.dirty == 1
+    assert index._deferred_tombstones[id(shard)] == {index._tombstone_key(42)}
+
+    index._pending_rotations.clear()
+
+
+def test_remove_batch_active_and_pending_no_double_dirty(tmp_path):
+    """Batch remove with keys in active+pending counts dirty correctly."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    # Keys 0,1 in active shard
+    for i in range(2):
+        index.add(i, _make_vec())
+
+    # Key 0 also in pending, key 5 only in pending
+    shard = index._create_shard()
+    shard.add(0, _make_vec())
+    shard.add(5, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    dirty_before = index.dirty
+    index.remove([0, 5])
+    # 0 is visible (active) → counted by contains(). 5 is pending-only → counted by return value.
+    assert index.dirty == dirty_before + 2
+
+    index._pending_rotations.clear()
+
+
+def test_remove_batch_skips_pending_shard_without_keys(tmp_path):
+    """Batch remove iterates past pending shards that contain none of the requested keys."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard_a = index._create_shard()
+    shard_a.add(90, _make_vec())
+    shard_b = index._create_shard()
+    shard_b.add(1, _make_vec())
+    shard_b.add(2, _make_vec())
+
+    never_a: Future = Future()
+    never_b: Future = Future()
+    index._pending_rotations.append((shard_a, tmp_path / "shard_a.usearch", never_a, None))
+    index._pending_rotations.append((shard_b, tmp_path / "shard_b.usearch", never_b, None))
+
+    index.remove([1, 2])
+    assert id(shard_a) not in index._deferred_tombstones
+    deferred_b = index._deferred_tombstones.get(id(shard_b), set())
+    assert index._tombstone_key(1) in deferred_b
+    assert index._tombstone_key(2) in deferred_b
+
+    index._pending_rotations.clear()
+
+
+def test_remove_batch_breaks_early_when_all_found_in_pending(tmp_path):
+    """Batch remove stops iterating pending shards once all keys are found."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard_a = index._create_shard()
+    shard_a.add(1, _make_vec())
+    shard_a.add(2, _make_vec())
+    shard_b = index._create_shard()
+    shard_b.add(99, _make_vec())
+
+    never_a: Future = Future()
+    never_b: Future = Future()
+    index._pending_rotations.append((shard_a, tmp_path / "shard_a.usearch", never_a, None))
+    index._pending_rotations.append((shard_b, tmp_path / "shard_b.usearch", never_b, None))
+
+    # Both keys in shard_a — should break before checking shard_b
+    index.remove([1, 2])
+    deferred_a = index._deferred_tombstones.get(id(shard_a), set())
+    assert index._tombstone_key(1) in deferred_a
+    assert index._tombstone_key(2) in deferred_a
+
+    index._pending_rotations.clear()
+
+
+def test_deferred_tombstones_merged_on_drain(tmp_path):
+    """Deferred tombstones merge into _tombstones when drain_rotations completes."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    shard = index._create_shard()
+    shard.add(42, _make_vec())
+    shard_path = tmp_path / "shard_fake.usearch"
+    shard.save(str(shard_path))
+    viewed = index._restore_shard(shard_path, view=True)
+
+    # Inject as pending rotation — future NOT done yet
+    pending_future: Future = Future()
+    index._pending_rotations.append((shard, shard_path, pending_future, None))
+
+    # Remove key 42 — tombstone deferred (shard still pending)
+    index.remove(42)
+    assert index._tombstone_key(42) not in index._tombstones
+    assert index._tombstone_key(42) in index._deferred_tombstones[id(shard)]
+
+    # Complete the rotation and drain
+    pending_future.set_result(viewed)
+    index.drain_rotations()
+
+    # Deferred tombstone now merged
+    assert index._tombstone_key(42) in index._tombstones
+    assert not index._deferred_tombstones
+
+
+def test_deferred_tombstones_no_size_undercount(tmp_path):
+    """Deferred tombstones don't affect len() until rotation completes."""
+    from concurrent.futures import Future
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=5000, background_rotation=True, bloom_filter=False)
+
+    # 3 keys in active shard
+    for i in range(3):
+        index.add(i, _make_vec())
+    assert len(index) == 3
+
+    # 5 keys in a pending rotation shard
+    shard = index._create_shard()
+    for i in range(10, 15):
+        shard.add(i, _make_vec())
+    never_done: Future = Future()
+    index._pending_rotations.append((shard, tmp_path / "shard_fake.usearch", never_done, None))
+
+    # Remove a key from the pending shard — deferred, so len() stays stable
+    index.remove(12)
+    assert len(index) == 3  # unchanged — deferred tombstone doesn't affect size
+
+    index._pending_rotations.clear()

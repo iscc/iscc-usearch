@@ -434,6 +434,7 @@ class ShardedIndex:
         self._background_rotation = background_rotation
         self._max_pending_rotations = max_pending_rotations
         self._pending_rotations: list[tuple[Index, Path, Future, bytes | None]] = []
+        self._deferred_tombstones: dict[int, set[int | bytes]] = {}
         self._rotation_executor: ThreadPoolExecutor | None = None
         self._closed: bool = False
 
@@ -1602,6 +1603,7 @@ class ShardedIndex:
 
         Active shard entries: USearch remove() (lazy deletion).
         View shard entries: tombstoned (suppressed on read, cleaned on compact()).
+        Pending rotation shard entries: tombstoned (shard still in memory).
         Keys that exist only in the active shard are NOT tombstoned.
 
         :param keys: Key or sequence of keys to remove
@@ -1610,60 +1612,84 @@ class ShardedIndex:
         :raises ValueError: If multi=True
         """
         self._check_writable()
-        self.drain_rotations()
+        self._register_completed_rotations()
         if self._config.get("multi"):
             raise ValueError("remove() requires multi=False")
         if self._is_single_key(keys):
             if self.contains(keys):
                 self._dirty += 1
-            self._remove_single(keys, compact=compact)
+            self._dirty += self._remove_single(keys, compact=compact)
         else:
             keys_arr = self._normalize_batch_keys(keys)
             self._dirty += int(np.asarray(self.contains(keys_arr), dtype=bool).sum())
-            self._remove_batch(keys, compact=compact)
+            self._dirty += self._remove_batch(keys, compact=compact)
 
-    def _remove_single(self, key: Any, *, compact: bool = False) -> None:
-        """Remove a single key from the index."""
+    def _remove_single(self, key: Any, *, compact: bool = False) -> int:
+        """Remove a single key from the index.
+
+        :return: 1 if key was found only in a pending rotation shard, else 0.
+        """
         # Bloom filter fast rejection
         if self._use_bloom and self._bloom is not None:
             if not self._bloom.contains(self._bloom_key(key)):
-                return
+                return 0
+
+        found_in_visible = False
 
         # Check active shard
         if self._active_shard is not None and self._active_shard.contains(key):
             self._active_shard.remove(key, compact=compact)
+            found_in_visible = True
 
         # Check view shards — tombstone if found in any view shard
         for idx in reversed(self._viewed_indexes):
             if idx.contains(key):
                 self._tombstones.add(self._tombstone_key(key))
-                return
+                return 0
 
-    def _remove_batch(self, keys: Any, *, compact: bool = False) -> None:
-        """Remove multiple keys from the index."""
+        # Check pending rotation shards (still in memory, not yet registered as view)
+        tombstone_key = self._tombstone_key(key)
+        for shard, _path, _future, _ts in self._pending_rotations:
+            if shard.contains(key):
+                deferred = self._deferred_tombstones.get(id(shard))
+                if deferred is not None and tombstone_key in deferred:
+                    return 0
+                self._deferred_tombstones.setdefault(id(shard), set()).add(tombstone_key)
+                return 0 if found_in_visible else 1
+
+        return 0
+
+    def _remove_batch(self, keys: Any, *, compact: bool = False) -> int:
+        """Remove multiple keys from the index.
+
+        :return: Count of keys found only in pending rotation shards.
+        """
         keys_arr = self._normalize_batch_keys(keys)
         if len(keys_arr) == 0:
-            return
+            return 0
 
         # Bloom filter fast rejection
         if self._use_bloom and self._bloom is not None:
             bloom_results = self._bloom.contains_batch(self._bloom_keys(keys_arr))
             maybe_present = np.array(bloom_results, dtype=bool)
             if not maybe_present.any():
-                return
+                return 0
             keys_to_check = keys_arr[maybe_present]
         else:
             keys_to_check = keys_arr
 
+        found_in_visible = np.zeros(len(keys_to_check), dtype=bool)
+
         # Check active shard — remove present keys
         if self._active_shard is not None:  # pragma: no branch – writable always has active
             active_exists = np.asarray(self._active_shard.contains(self._shard_batch_keys(keys_to_check)), dtype=bool)
+            found_in_visible |= active_exists
             if active_exists.any():
                 self._active_shard.remove(self._shard_batch_keys(keys_to_check[active_exists]), compact=compact)
 
         # Check view shards — tombstone keys found in any view shard
+        in_view = np.zeros(len(keys_to_check), dtype=bool)
         if self._viewed_indexes:
-            in_view = np.zeros(len(keys_to_check), dtype=bool)
             for idx in reversed(self._viewed_indexes):
                 if in_view.all():
                     break
@@ -1671,8 +1697,38 @@ class ShardedIndex:
                 in_view[remaining] |= np.asarray(
                     idx.contains(self._shard_batch_keys(keys_to_check[remaining])), dtype=bool
                 )
-            if in_view.any():
-                self._tombstones.update(self._tombstone_keys(keys_to_check[in_view]))
+        found_in_visible |= in_view
+
+        # Tombstone view shard keys immediately
+        if in_view.any():
+            self._tombstones.update(self._tombstone_keys(keys_to_check[in_view]))
+
+        # Check pending rotation shards — defer tombstones per-shard
+        in_pending = np.zeros(len(keys_to_check), dtype=bool)
+        newly_deferred_pending_only: set[int | bytes] = set()
+        if self._pending_rotations and not in_view.all():
+            for shard, _path, _future, _ts in self._pending_rotations:
+                if (in_view | in_pending).all():
+                    break
+                remaining = ~(in_view | in_pending)
+                in_this_shard = np.zeros(len(keys_to_check), dtype=bool)
+                in_this_shard[remaining] = np.asarray(
+                    shard.contains(self._shard_batch_keys(keys_to_check[remaining])), dtype=bool
+                )
+                if in_this_shard.any():
+                    deferred = self._deferred_tombstones.setdefault(id(shard), set())
+                    for key, is_visible in zip(
+                        self._tombstone_keys(keys_to_check[in_this_shard]),
+                        found_in_visible[in_this_shard],
+                    ):
+                        if key in deferred:
+                            continue
+                        deferred.add(key)
+                        if not is_visible:
+                            newly_deferred_pending_only.add(key)
+                    in_pending |= in_this_shard
+
+        return len(newly_deferred_pending_only)
 
     def __delitem__(self, keys: Any) -> None:
         """Remove vectors by key (del index[key])."""
@@ -2046,6 +2102,12 @@ class ShardedIndex:
             self._rotation_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="shard-rotate")
         return self._rotation_executor
 
+    def _merge_deferred_tombstones(self, shard: Index) -> None:
+        """Merge deferred removal tombstones for a completed rotation shard."""
+        deferred = self._deferred_tombstones.pop(id(shard), None)
+        if deferred:
+            self._tombstones.update(deferred)
+
     def _enforce_pending_limit(self) -> None:
         """Block if max pending rotations reached, draining oldest first."""
         while len(self._pending_rotations) >= self._max_pending_rotations:
@@ -2061,6 +2123,7 @@ class ShardedIndex:
             shard, path, future, _ts = self._pending_rotations[0]
             viewed = future.result()  # blocks
             self._register_view_shard(viewed)
+            self._merge_deferred_tombstones(shard)
             self._pending_rotations.pop(0)
             self._invalidate_shard_cache()
 
@@ -2085,6 +2148,7 @@ class ShardedIndex:
                     first_error = exc
             else:
                 self._register_view_shard(future.result())
+                self._merge_deferred_tombstones(shard)
                 registered = True
 
         self._pending_rotations = still_pending
@@ -2131,6 +2195,7 @@ class ShardedIndex:
                 raise TimeoutError(f"Timed out with {len(self._pending_rotations)} rotation(s) pending") from None
 
             self._register_view_shard(viewed)
+            self._merge_deferred_tombstones(shard)
             self._pending_rotations.pop(0)
 
         self._invalidate_shard_cache()
