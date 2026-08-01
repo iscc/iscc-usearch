@@ -22,9 +22,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Set version from tag
+      - name: Verify tag matches pyproject version
         run: |
-          sed -i "s/^version = \".*\"/version = \"$RELEASE_VERSION\"/" pyproject.toml
+          PROJECT_VERSION=$(uv version --short)
+          if [ "$PROJECT_VERSION" != "$RELEASE_VERSION" ]; then
+            echo "::error::Release tag '$RELEASE_VERSION' does not match pyproject.toml version '$PROJECT_VERSION'. Bump the version with 'uv version <version>', commit, then re-tag."
+            exit 1
+          fi
         env:
           RELEASE_VERSION: ${{ github.event.release.tag_name }}
 

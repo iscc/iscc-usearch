@@ -86,6 +86,25 @@ Build for deployment:
 uv run poe docs-build
 ```
 
+## Releasing
+
+The version in `pyproject.toml` is the single source of truth. Bump it and commit *before*
+tagging — the release workflow verifies that the tag name matches the project version and fails
+the publish if they disagree.
+
+```bash
+# Bump the version (also updates uv.lock)
+uv version 0.8.1
+
+# Commit, then tag and push
+git commit -am "chore: release 0.8.1"
+git tag 0.8.1
+git push origin main --tags
+```
+
+Publishing a GitHub release for that tag triggers the `release` workflow, which runs the full
+test matrix, verifies the version, builds, and uploads to PyPI. Tags carry no `v` prefix.
+
 ## Cross-platform support
 
 All code, scripts, and dev tools must work on **Linux**, **macOS**, and **Windows**. Please test on
