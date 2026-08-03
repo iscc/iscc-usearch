@@ -39,7 +39,7 @@ classifiers = [
 dependencies = [
     "loguru>=0.7.3",
     "fastbloom-rs>=0.5.10",
-    "usearch-iscc==2.24.5",
+    "usearch-iscc==2.24.6",
 ]
 
 [project.urls]
