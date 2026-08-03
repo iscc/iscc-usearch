@@ -58,10 +58,10 @@ dev = [
     "poethepoet>=0.38.0",
     "bandit>=1.9.2",
     "prek>=0.2.19",
-    "ty>=0.0.15",
+    "ty>=0.0.15,<0.0.35",  # newer versions flag pre-existing mixin/override patterns
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",
-    "ruff>=0.14.6",
+    "ruff>=0.14.6,<0.16",  # 0.16 expands the default ruleset; codebase not yet migrated
     "zensical>=0.0.21",
     "mkdocstrings-python>=1.16.0",
 ]
