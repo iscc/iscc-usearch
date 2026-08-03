@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.1] - 2026-08-03
+
+### Fixed
+
+- `remove()` no longer blocks on pending background rotations — it registers completed
+    rotations non-blocking and searches pending rotation shards directly in memory. Keys found
+    only in pending shards receive per-shard deferred tombstones that merge into the tombstone
+    set when the rotation registers; re-adding a key discards its deferred tombstone so the
+    fresh copy is never shadowed ([#29](https://github.com/iscc/iscc-usearch/issues/29))
+
+### Changed
+
+- Updated `usearch-iscc` to 2.24.6 — `compact()` now rebuilds key lookups so `get()` stays
+    consistent ([iscc/usearch#9](https://github.com/iscc/usearch/issues/9)), plus hash-table
+    tombstone reclamation and capacity fixes under churn
+- Release workflow verifies the tag matches the `pyproject.toml` version instead of rewriting
+    it at build time — the repository is the single source of truth for the version
+
 ## [0.8.0] - 2026-05-07
 
 ### Added
@@ -231,3 +249,4 @@ Initial release of iscc-usearch.
 [0.6.1]: https://github.com/iscc/iscc-usearch/compare/0.6.0...0.6.1
 [0.7.0]: https://github.com/iscc/iscc-usearch/compare/0.6.1...0.7.0
 [0.8.0]: https://github.com/iscc/iscc-usearch/compare/0.7.0...0.8.0
+[0.8.1]: https://github.com/iscc/iscc-usearch/compare/0.8.0...0.8.1

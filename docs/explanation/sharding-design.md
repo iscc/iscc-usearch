@@ -76,9 +76,12 @@ shards.
 
 `drain_rotations()` waits for all pending background rotations, registering each as a view
 shard. It retries failed rotations once before raising. Key-dependent operations (`upsert`,
-`add_once`, `remove`, `save`, `compact`, `reset`) call `drain_rotations()` automatically.
-`add()` calls `_register_completed_rotations()` — a non-blocking check that registers finished
-tasks without waiting.
+`add_once`, `save`, `compact`, `reset`) call `drain_rotations()` automatically.
+`add()` and `remove()` call `_register_completed_rotations()` — a non-blocking check that
+registers finished tasks without waiting. `remove()` searches pending rotation shards directly
+in memory: keys found only there receive per-shard deferred tombstones that merge into
+`_tombstones` when the rotation registers. Re-adding a key discards its deferred tombstone so
+the fresh copy is never shadowed.
 
 ### Tombstone snapshots
 

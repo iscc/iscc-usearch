@@ -132,8 +132,10 @@ These raise `NotImplementedError`: `rename()`, `join()`, `cluster()`, `pairwise_
 - `background_rotation=True` uses a single background thread for shard serialization.
     The detached shard has exclusive ownership in the background thread. Pending rotations
     serialize via a `ThreadPoolExecutor(max_workers=1)`.
-- Key-dependent writes (`upsert`, `add_once`, `remove`, `save`, `compact`, `reset`)
-    drain pending rotations first. `add()` registers completed rotations non-blocking.
+- Key-dependent writes (`upsert`, `add_once`, `save`, `compact`, `reset`)
+    drain pending rotations first. `add()` and `remove()` register completed rotations
+    non-blocking; `remove()` tombstones keys found only in pending rotation shards via
+    per-shard deferred tombstones that merge at registration.
 
 ### Vector constraints
 
@@ -207,24 +209,24 @@ _tombstones.clear(), tombstones.npy deleted
 
 ## Side effects catalog
 
-| Method              | Disk writes                                                             | `_dirty`                | `_tombstones`              | Bloom update         | Shard rotation         |
-| ------------------- | ----------------------------------------------------------------------- | ----------------------- | -------------------------- | -------------------- | ---------------------- |
-| `add()`             | None (until rotation; rotation durably writes bloom, shard, tombstones) | `+= count_added`        | Clears matching tombstones | `add_batch()`        | Yes (if size exceeded) |
-| `remove()`          | None                                                                    | `+= N` (existing only)  | Adds view-shard keys       | None                 | No                     |
-| `upsert()`          | None                                                                    | Via remove + add        | Via remove + add           | Via add              | Via add                |
-| `add_once()`        | None                                                                    | Via add (new keys only) | None                       | Via add              | Via add                |
-| `save()`            | `.usearch`, `bloom.isbf`, `tombstones.npy`                              | Reset to 0              | Persisted                  | Persisted            | No                     |
-| `load()`            | None                                                                    | Reset to 0              | Loaded from `.npy`         | Loaded from `.isbf`  | No                     |
-| `view()`            | None                                                                    | Reset to 0              | N/A (NphdIndex)            | N/A                  | No                     |
-| `reset()`           | None                                                                    | Reset to 0              | Cleared                    | Cleared              | No                     |
-| `compact()`         | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy`             | Reset to 0              | Cleared                    | Rebuilt              | No                     |
-| `search()`          | None                                                                    | No change               | No change                  | None                 | No                     |
-| `get()`             | None                                                                    | No change               | No change                  | None                 | No                     |
-| `contains()`        | None                                                                    | No change               | No change                  | None                 | No                     |
-| `count()`           | None                                                                    | No change               | No change                  | None                 | No                     |
-| `rebuild_bloom()`   | `bloom.isbf` (if `save=True`)                                           | No change               | No change                  | Rebuilt from scratch | No                     |
-| `drain_rotations()` | None normally; retries failed rotations (writes shard + tombstones)     | No change               | No change                  | None                 | No                     |
-| `close()`           | Drains, saves if non-empty or dirty, releases mmap/executor             | N/A (closed)            | Persisted via save         | Persisted via save   | No                     |
+| Method              | Disk writes                                                             | `_dirty`                | `_tombstones`                                   | Bloom update         | Shard rotation         |
+| ------------------- | ----------------------------------------------------------------------- | ----------------------- | ----------------------------------------------- | -------------------- | ---------------------- |
+| `add()`             | None (until rotation; rotation durably writes bloom, shard, tombstones) | `+= count_added`        | Clears matching tombstones                      | `add_batch()`        | Yes (if size exceeded) |
+| `remove()`          | None                                                                    | `+= N` (existing only)  | Adds view-shard keys; defers pending-shard keys | None                 | No                     |
+| `upsert()`          | None                                                                    | Via remove + add        | Via remove + add                                | Via add              | Via add                |
+| `add_once()`        | None                                                                    | Via add (new keys only) | None                                            | Via add              | Via add                |
+| `save()`            | `.usearch`, `bloom.isbf`, `tombstones.npy`                              | Reset to 0              | Persisted                                       | Persisted            | No                     |
+| `load()`            | None                                                                    | Reset to 0              | Loaded from `.npy`                              | Loaded from `.isbf`  | No                     |
+| `view()`            | None                                                                    | Reset to 0              | N/A (NphdIndex)                                 | N/A                  | No                     |
+| `reset()`           | None                                                                    | Reset to 0              | Cleared                                         | Cleared              | No                     |
+| `compact()`         | Rebuilds `.usearch`, `bloom.isbf`, deletes `tombstones.npy`             | Reset to 0              | Cleared                                         | Rebuilt              | No                     |
+| `search()`          | None                                                                    | No change               | No change                                       | None                 | No                     |
+| `get()`             | None                                                                    | No change               | No change                                       | None                 | No                     |
+| `contains()`        | None                                                                    | No change               | No change                                       | None                 | No                     |
+| `count()`           | None                                                                    | No change               | No change                                       | None                 | No                     |
+| `rebuild_bloom()`   | `bloom.isbf` (if `save=True`)                                           | No change               | No change                                       | Rebuilt from scratch | No                     |
+| `drain_rotations()` | None normally; retries failed rotations (writes shard + tombstones)     | No change               | No change                                       | None                 | No                     |
+| `close()`           | Drains, saves if non-empty or dirty, releases mmap/executor             | N/A (closed)            | Persisted via save                              | Persisted via save   | No                     |
 
 ---
 

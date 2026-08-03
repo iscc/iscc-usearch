@@ -94,7 +94,9 @@ For `ShardedNphdIndex`, `remove()` checks the bloom filter first for fast reject
 entries are removed immediately via USearch's lazy deletion. View shard entries are tombstoned —
 tracked in a `_tombstones` set and persisted as `tombstones.npy`. Tombstoned entries are suppressed
 in search results and iterators. `compact()` rebuilds view shards to physically remove tombstoned
-entries and reclaim disk space.
+entries and reclaim disk space. With background rotation, `remove()` does not block on pending
+rotations — keys found only in a rotating shard receive deferred tombstones that merge once the
+shard registers as a view.
 
 ### Read path (search)
 

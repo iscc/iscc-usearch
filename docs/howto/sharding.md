@@ -294,7 +294,8 @@ arrays (batch) instead of integers. See the [UUID keys how-to](uuid-keys.md) for
 
 `remove()` deletes vectors by key. Active shard entries are removed immediately via USearch's
 lazy deletion. View shard entries are tombstoned — suppressed on reads and cleaned on
-`compact()`:
+`compact()`. Entries in shards still rotating in the background are tombstoned without
+blocking on the rotation:
 
 ```python
 # Single remove
