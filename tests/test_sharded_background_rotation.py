@@ -1,5 +1,7 @@
 """Tests for background shard rotation (issue #27)."""
 
+import threading
+
 import numpy as np
 import pytest
 
@@ -246,6 +248,63 @@ def test_remove_finds_keys_in_pending_rotations(tmp_path):
     # Key 0 was rotated — remove should find it (in view or pending shard)
     index.remove(0)
     assert not index.contains(0)
+
+
+def test_readd_during_pending_rotation_not_shadowed(tmp_path, monkeypatch):
+    """A key removed and re-added while its shard rotates stays retrievable.
+
+    The deferred tombstone created by remove() must be discarded by the re-add;
+    otherwise it merges into _tombstones once the rotation registers and shadows
+    the key as soon as the re-added copy itself rotates into a view shard.
+    """
+    gate = threading.Event()
+    original_task = ShardedIndex._background_rotate_task
+
+    def gated_task(self, shard, shard_path, tombstone_data):
+        gate.wait(timeout=30)
+        return original_task(self, shard, shard_path, tombstone_data)
+
+    monkeypatch.setattr(ShardedIndex, "_background_rotate_task", gated_task)
+
+    index = ShardedIndex(ndim=64, path=tmp_path, shard_size=1 << 20, background_rotation=True)
+    key = 1000
+    new_vec = _make_vec()
+    for i in range(20):
+        index.add(i, _make_vec())
+    index.add(key, _make_vec())
+
+    # Detach the shard holding the key into a gated (still pending) rotation
+    index._rotate_shard()
+    assert len(index._pending_rotations) == 1
+
+    # Remove + re-add while the rotation is pending. The unrelated add in
+    # between exercises deferred-tombstone clearing without key overlap.
+    index.remove(key)
+    index.add(2000, _make_vec())
+    index.add(key, new_vec)
+
+    # Rotation completes only now — after the re-add
+    gate.set()
+    index.drain_rotations()
+
+    # The deferred tombstone must not have merged for the re-added key
+    assert index._tombstone_key(key) not in index._tombstones
+    np.testing.assert_allclose(index.get(key), new_vec, atol=0.01)
+
+    # Rotate the shard holding the re-added copy into a view as well
+    index._rotate_shard()
+    index.drain_rotations()
+
+    result = index.get(key)
+    assert result is not None
+    np.testing.assert_allclose(result, new_vec, atol=0.01)
+    matches = index.search(new_vec, 3)
+    assert key in [int(k) for k in np.atleast_1d(matches.keys).ravel()]
+
+    # compact() keeps the re-added copy (only the stale duplicate is dropped)
+    index.compact()
+    np.testing.assert_allclose(index.get(key), new_vec, atol=0.01)
+    index.close()
 
 
 def test_upsert_drains_before_executing(tmp_path):

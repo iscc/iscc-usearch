@@ -630,11 +630,19 @@ class ShardedIndex:
         # Discard tombstones for added keys (active shard is now authoritative).
         # When tombstones are cleared, cross-shard duplicates remain in view shards
         # until compact() — flag this so iteration/search applies dedup filtering.
-        if self._tombstones:
-            before = len(self._tombstones)
-            self._tombstones.difference_update(self._tombstone_keys(np.atleast_1d(result)))
-            if len(self._tombstones) < before:
-                self._needs_compact = True
+        # Deferred tombstones must be cleared too: an entry merging after a re-add
+        # would shadow the key once its shard rotates into a view.
+        if self._tombstones or self._deferred_tombstones:
+            added_tombstone_keys = self._tombstone_keys(np.atleast_1d(result))
+            if self._tombstones:
+                before = len(self._tombstones)
+                self._tombstones.difference_update(added_tombstone_keys)
+                if len(self._tombstones) < before:
+                    self._needs_compact = True
+            for deferred in self._deferred_tombstones.values():
+                if not deferred.isdisjoint(added_tombstone_keys):
+                    deferred.difference_update(added_tombstone_keys)
+                    self._needs_compact = True
 
         # Amortized rotation check: only compute serialized_length when countdown expires
         self._dirty += count_added
